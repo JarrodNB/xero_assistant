@@ -35,6 +35,13 @@ class XeroInvoiceService:
         raw_contacts = await self._search_contacts(name)
         return [map_contact(contact) for contact in raw_contacts]
 
+    async def list_contacts(self, name: str | None = None) -> list[ContactRecord]:
+        """Return contacts, optionally limited to names that contain the query."""
+        if name:
+            return await self.find_contacts(name)
+        raw_contacts = await self._fetch_contacts()
+        return [map_contact(contact) for contact in raw_contacts]
+
     async def find_invoices(
         self,
         contact_name: str | None,
@@ -187,6 +194,20 @@ class XeroInvoiceService:
                 "Load the invoice and try voiding it again.",
             )
         return map_invoice(saved)
+
+    async def _fetch_contacts(self) -> list[dict[str, Any]]:
+        """Page through contacts until a short page or the page cap."""
+        rows: list[dict[str, Any]] = []
+        for page in range(1, PAGE_LIMIT + 1):
+            try:
+                response = await self._client.get("/Contacts", {"page": page})
+            except XeroApiError as error:
+                raise _from_xero(error) from error
+            batch = response.get("Contacts") or []
+            rows.extend(batch)
+            if len(batch) < 100:
+                break
+        return rows
 
     async def _search_contacts(self, name: str) -> list[dict[str, Any]]:
         """Search contacts and keep names that contain the query."""

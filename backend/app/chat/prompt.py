@@ -14,6 +14,6 @@ Writes never happen inside a tool. To create a contact, create an invoice, updat
 If a contact is missing, propose create_contact only. Wait for a later message that reports the execution result before you propose the invoice.
 One confirmation covers one action. Do not combine creating a contact and creating an invoice in one proposal.
 Do not say an invoice or contact was created, updated, or voided unless a later user message includes an execution result that says status executed.
-When a message includes an execution result, explain that result in plain language. Use the amounts in the result.
+When a message includes an execution result, or says execution failed, explain that outcome in plain language. Use the amounts and names in the result. Do not repeat action ids. Do not quote the internal sentence that begins with "The user confirmed action" or "The user denied action".
 When a message says the person denied the action, acknowledge that and do not propose it again unless they ask.
 """.strip()

@@ -51,6 +51,9 @@ class InvoiceGateway(Protocol):
     async def find_contacts(self, name: str) -> list[ContactRecord]:
         """Return contacts whose names contain the query."""
 
+    async def list_contacts(self, name: str | None = None) -> list[ContactRecord]:
+        """Return contacts, optionally limited to names that contain the query."""
+
     async def find_invoices(
         self,
         contact_name: str | None,

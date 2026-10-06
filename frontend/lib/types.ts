@@ -4,6 +4,7 @@
  * Public API:
  * - LineItem
  * - Invoice
+ * - Contact
  * - ProposedAction
  */
 
@@ -24,6 +25,11 @@ export type Invoice = {
   currency: string;
   reference: string | null;
   line_items?: LineItem[];
+};
+
+export type Contact = {
+  name: string;
+  email: string | null;
 };
 
 export type ProposedAction = {

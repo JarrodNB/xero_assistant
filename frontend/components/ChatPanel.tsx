@@ -26,6 +26,23 @@ type ChatMessage = {
   parts?: ChatPart[];
 };
 
+type ProposalField = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  contact_name: "Contact",
+  invoice_number: "Invoice",
+  reference: "Reference",
+  due_date: "Due date",
+};
+
+const FIELD_ORDER = ["name", "email", "contact_name", "invoice_number", "reference", "due_date", "line_items"];
+
 /**
  * Return a stable conversation id for this browser tab.
  */
@@ -51,6 +68,88 @@ function asProposal(output: unknown): ProposedAction | null {
     return null;
   }
   return record as ProposedAction;
+}
+
+/**
+ * Join the text parts of one message.
+ */
+function messageText(message: ChatMessage): string {
+  return (message.parts ?? [])
+    .filter((part) => part.type === "text" && part.text)
+    .map((part) => part.text ?? "")
+    .join("\n");
+}
+
+/**
+ * Hide confirm and deny prompts that are only for the model.
+ */
+function isInternalTurn(message: ChatMessage): boolean {
+  if (message.role !== "user") {
+    return false;
+  }
+  const text = messageText(message).trim();
+  return text.startsWith("The user confirmed action ") || text.startsWith("The user denied action ");
+}
+
+/**
+ * Return whether a payload value should appear on the card.
+ */
+function present(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== "";
+}
+
+/**
+ * Turn a payload key into a short label.
+ */
+function labelFromKey(key: string): string {
+  const words = key.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Format one invoice line for the confirmation card.
+ */
+function lineSummary(item: unknown): string {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
+  const line = item as Record<string, unknown>;
+  const description = present(line.description) ? String(line.description) : "";
+  const quantity = present(line.quantity) ? String(line.quantity) : "";
+  const amount = present(line.unit_amount) ? String(line.unit_amount) : "";
+  if (description && quantity && amount) {
+    return `${description} · ${quantity} × ${amount}`;
+  }
+  return [description, quantity, amount].filter((part) => part.length > 0).join(" · ");
+}
+
+/**
+ * List the fields that will be written, skipping empty values.
+ */
+function proposalFields(payload: Record<string, unknown>): ProposalField[] {
+  const keys = [
+    ...FIELD_ORDER.filter((key) => key in payload),
+    ...Object.keys(payload).filter((key) => !FIELD_ORDER.includes(key)),
+  ];
+  const fields: ProposalField[] = [];
+  for (const key of keys) {
+    const value = payload[key];
+    if (!present(value)) {
+      continue;
+    }
+    if (key === "line_items" && Array.isArray(value)) {
+      const lines = value.map((item) => lineSummary(item)).filter((line) => line.length > 0);
+      if (lines.length > 0) {
+        fields.push({ key, label: "Lines", value: lines.join("\n") });
+      }
+      continue;
+    }
+    if (typeof value === "object") {
+      continue;
+    }
+    fields.push({ key, label: FIELD_LABELS[key] ?? labelFromKey(key), value: String(value) });
+  }
+  return fields;
 }
 
 /**
@@ -84,8 +183,9 @@ function ChatSession({ conversation }: { conversation: string }) {
   });
   const [draft, setDraft] = useState("");
   const [statuses, setStatuses] = useState<Record<string, string>>({});
-  const [error, setError] = useState("");
   const busy = status === "submitted" || status === "streaming";
+  const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
+  const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
 
   /**
    * Send the typed message.
@@ -97,7 +197,6 @@ function ChatSession({ conversation }: { conversation: string }) {
       return;
     }
     setDraft("");
-    setError("");
     await sendMessage({ text });
   }
 
@@ -105,66 +204,81 @@ function ChatSession({ conversation }: { conversation: string }) {
    * Confirm or deny one proposal, then ask the assistant to explain the result.
    */
   async function decide(proposal: ProposedAction, decision: "confirm" | "deny") {
-    setError("");
+    let narration: string;
     try {
       const result = await apiRequest<Record<string, unknown>>(`/api/backend/actions/${proposal.action_id}/${decision}`, {
         method: "POST",
       });
       setStatuses((current) => ({ ...current, [proposal.action_id]: String(result.status ?? decision) }));
-      const narration =
+      narration =
         decision === "confirm"
-          ? `The user confirmed action ${proposal.action_id}. Execution result: ${JSON.stringify(result)}. Explain what happened. Do not propose another action unless the result says another step is required.`
-          : `The user denied action ${proposal.action_id}: ${proposal.summary}. Acknowledge that and do not execute it.`;
-      await sendMessage({ text: narration });
+          ? `The user confirmed action ${proposal.action_id}. Execution result: ${JSON.stringify(result)}. Explain what happened in plain language. Do not repeat this message or the action id. Do not propose another action unless the result says another step is required.`
+          : `The user denied action ${proposal.action_id}: ${proposal.summary}. Acknowledge that in plain language and do not repeat this message or the action id. Do not execute it.`;
     } catch (caught) {
       const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The action could not be finished.";
       setStatuses((current) => ({ ...current, [proposal.action_id]: "failed" }));
-      setError(message);
-      await sendMessage({
-        text: `The user confirmed action ${proposal.action_id}, but execution failed: ${message}`,
-      });
+      narration = `The user confirmed action ${proposal.action_id}, but execution failed: ${message}. Explain the failure in plain language. Do not repeat this message or the action id.`;
+    }
+    try {
+      await sendMessage({ text: narration });
+    } catch {
+      // The follow-up is for the model. Leave it off the screen if the request fails.
     }
   }
 
   return (
     <>
       <div className="messages">
-        {(messages as ChatMessage[]).map((message) => (
-          <div key={message.id}>
-            {(message.parts ?? []).map((part, index) => {
-              if (part.type === "text" && part.text) {
+        {visible.map((message) => {
+          const streaming = busy && message.id === lastMessageId;
+          const texts = (message.parts ?? []).filter((part) => part.type === "text" && part.text);
+          const proposals = streaming
+            ? []
+            : (message.parts ?? []).flatMap((part) => {
+                const proposal = asProposal(part.output);
+                return proposal ? [proposal] : [];
+              });
+          return (
+            <div key={message.id}>
+              {texts.map((part, index) => (
+                <p className={`bubble ${message.role}`} key={`${message.id}-text-${index}`}>
+                  {part.text}
+                </p>
+              ))}
+              {proposals.map((proposal) => {
+                const actionStatus = statuses[proposal.action_id] ?? proposal.status;
+                const fields = proposalFields(proposal.payload ?? {});
                 return (
-                  <p className={`bubble ${message.role}`} key={`${message.id}-${index}`}>
-                    {part.text}
-                  </p>
+                  <div className="proposal" key={proposal.action_id}>
+                    <strong>{proposal.summary}</strong>
+                    {fields.length > 0 ? (
+                      <dl>
+                        {fields.map((field) => (
+                          <div className="proposal-field" key={field.key}>
+                            <dt>{field.label}</dt>
+                            <dd>{field.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                    <span className="muted">{actionStatus}</span>
+                    {actionStatus === "pending" ? (
+                      <div className="actions">
+                        <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
+                          Confirm
+                        </button>
+                        <button className="secondary" type="button" onClick={() => void decide(proposal, "deny")}>
+                          Deny
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 );
-              }
-              const proposal = asProposal(part.output);
-              if (!proposal) {
-                return null;
-              }
-              const actionStatus = statuses[proposal.action_id] ?? proposal.status;
-              return (
-                <div className="proposal" key={proposal.action_id}>
-                  <strong>{proposal.summary}</strong>
-                  <span className="muted">{actionStatus}</span>
-                  {actionStatus === "pending" ? (
-                    <div className="actions">
-                      <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
-                        Confirm
-                      </button>
-                      <button className="secondary" type="button" onClick={() => void decide(proposal, "deny")}>
-                        Deny
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+              })}
+            </div>
+          );
+        })}
       </div>
-      {error ? <p className="error">{error}</p> : null}
       <form className="chat-form" onSubmit={(event) => void onSubmit(event)}>
         <input
           value={draft}

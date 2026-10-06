@@ -1,5 +1,5 @@
 /**
- * Purpose: Signed-in shell with navigation between invoices and chat.
+ * Purpose: Signed-in shell with navigation between invoices, contacts, and chat.
  *
  * Public API:
  * - AppShell
@@ -67,6 +67,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <nav>
           <Link className={pathname.startsWith("/invoices") ? "active" : ""} href="/invoices">
             Invoices
+          </Link>
+          <Link className={pathname.startsWith("/contacts") ? "active" : ""} href="/contacts">
+            Contacts
           </Link>
           <Link className={pathname.startsWith("/chat") ? "active" : ""} href="/chat">
             Chat

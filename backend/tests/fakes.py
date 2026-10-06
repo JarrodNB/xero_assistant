@@ -30,6 +30,14 @@ class FakeInvoiceGateway:
         needle = name.casefold()
         return [contact for contact in self.contacts if needle in contact.name.casefold()]
 
+    async def list_contacts(self, name: str | None = None) -> list[ContactRecord]:
+        """Return contacts, optionally limited to names that contain the query."""
+        self.read_calls.append("list_contacts")
+        if not name:
+            return list(self.contacts)
+        needle = name.casefold()
+        return [contact for contact in self.contacts if needle in contact.name.casefold()]
+
     async def find_invoices(
         self,
         contact_name: str | None,

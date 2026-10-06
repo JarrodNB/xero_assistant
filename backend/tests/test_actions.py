@@ -5,6 +5,8 @@ Public API:
 - test_missing_contact_does_not_create_one_in_xero
 - test_confirm_missing_contact_does_not_write
 - test_confirm_and_deny_are_separate
+- test_list_contacts_returns_name_and_email
+- test_list_contacts_pages_until_a_short_page
 """
 
 from collections.abc import Callable
@@ -159,6 +161,54 @@ def test_ui_save_also_refuses_to_create_a_missing_contact(api) -> None:
     assert saved.status_code == 200
     assert saved.json()["invoice"]["total"] == 55
     assert fake.write_calls == ["create_contact", "create_invoice"]
+
+
+def test_list_contacts_returns_name_and_email(api) -> None:
+    """The contacts page can list every contact or filter by name."""
+    client, fake = api
+    sign_in(client)
+    fake.contacts.append(ContactRecord(name="Juvy", email="juvy@yopmail.com"))
+    fake.contacts.append(ContactRecord(name="Bob's Construction", email=None))
+    listed = client.get("/contacts")
+    assert listed.status_code == 200
+    assert listed.json()["contacts"] == [
+        {"name": "Juvy", "email": "juvy@yopmail.com"},
+        {"name": "Bob's Construction", "email": None},
+    ]
+    filtered = client.get("/contacts", params={"name": "juv"})
+    assert filtered.status_code == 200
+    assert filtered.json()["contacts"] == [{"name": "Juvy", "email": "juvy@yopmail.com"}]
+
+
+@pytest.mark.asyncio
+async def test_list_contacts_pages_until_a_short_page() -> None:
+    """Contact listing follows Xero pages and stops on a short page."""
+    pages: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Return a full page, then one contact."""
+        if "identity.xero.com" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"access_token": "token-123", "refresh_token": "refresh-2", "expires_in": 1800},
+            )
+        page = int(request.url.params.get("page", "1"))
+        pages.append(page)
+        count = 100 if page == 1 else 1
+        contacts = [
+            {"Name": f"Contact {page}-{index}", "EmailAddress": f"c{page}-{index}@example.com"}
+            for index in range(count)
+        ]
+        return httpx.Response(200, json={"Contacts": contacts})
+
+    client = _connected_client(handler)
+    service = XeroInvoiceService(client)
+    contacts = await service.list_contacts()
+    await client.aclose()
+    assert pages == [1, 2]
+    assert len(contacts) == 101
+    assert contacts[0].name == "Contact 1-0"
+    assert contacts[0].email == "c1-0@example.com"
 
 
 def test_accounting_request_sends_the_stored_tenant() -> None:

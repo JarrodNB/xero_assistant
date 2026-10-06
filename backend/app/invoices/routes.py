@@ -6,7 +6,7 @@ Public API:
 
 from datetime import date
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Request
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, UpdateInvoicePayload, VoidInvoicePayload
 from app.auth.routes import require_user
@@ -31,11 +31,11 @@ def _raise_service_error(error: InvoiceServiceError) -> None:
 
 
 @router.get("/contacts")
-async def list_contacts(request: Request, name: str = Query(min_length=1)) -> dict[str, object]:
-    """Find contacts by name."""
+async def list_contacts(request: Request, name: str | None = None) -> dict[str, object]:
+    """List contacts, optionally filtered by name."""
     services = _services(request)
     try:
-        contacts = await services.invoices.find_contacts(name)
+        contacts = await services.invoices.list_contacts(name or None)
     except InvoiceServiceError as error:
         _raise_service_error(error)
     return {"contacts": [contact_payload(contact) for contact in contacts]}
