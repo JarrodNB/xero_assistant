@@ -36,6 +36,8 @@ def test_protected_routes_reject_missing_sessions(api) -> None:
     client, _fake = api
     assert client.get("/invoices").status_code == 401
     assert client.post("/chat", json={}).status_code == 401
+    assert client.get("/conversations").status_code == 401
+    assert client.get("/conversations/missing").status_code == 401
     assert client.post("/actions/missing/confirm").status_code == 401
     assert client.get("/contacts", params={"name": "Bob"}).status_code == 401
 

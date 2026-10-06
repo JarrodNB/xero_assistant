@@ -1,4 +1,4 @@
-"""Purpose: Stream a chat turn and keep the conversation id available to propose_action.
+"""Purpose: Stream a chat turn and read stored conversation history.
 
 Public API:
 - router
@@ -8,6 +8,7 @@ Public API:
 import json
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response, StreamingResponse
@@ -15,11 +16,79 @@ from pydantic import ValidationError
 
 from app.auth.routes import require_user
 from app.chat.jev import current_jev, screener_for
+from app.db.repository import StoredAction, StoredMessage
+from app.errors import ApiError
 from app.runtime import current_conversation_id, current_services
 from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 
 router = APIRouter(tags=["chat"])
+
+
+def _timestamp(value: datetime) -> str:
+    """Serialize a stored time for the chat client."""
+    return value.isoformat()
+
+
+def _message_payload(message: StoredMessage) -> dict[str, str]:
+    """Serialize one stored message."""
+    return {
+        "id": message.id,
+        "role": message.role,
+        "content": message.content,
+        "created_at": _timestamp(message.created_at),
+    }
+
+
+def _action_payload(action: StoredAction) -> dict[str, object]:
+    """Serialize one proposed action for a confirmation card."""
+    return {
+        "kind": "proposed_action",
+        "action_id": action.id,
+        "action_type": action.action_type,
+        "status": action.status,
+        "summary": action.summary,
+        "payload": action.payload,
+        "created_at": _timestamp(action.created_at),
+    }
+
+
+@router.get("/conversations")
+def list_conversations(request: Request) -> dict[str, object]:
+    """Return stored chats, newest activity first."""
+    require_user(request)
+    conversations = request.app.state.services.actions.list_conversations()
+    return {
+        "conversations": [
+            {
+                "id": item.id,
+                "updated_at": _timestamp(item.updated_at),
+                "preview": item.preview,
+            }
+            for item in conversations
+        ]
+    }
+
+
+@router.get("/conversations/{conversation_id}")
+def read_conversation(conversation_id: str, request: Request) -> dict[str, object]:
+    """Return one thread's messages and proposed actions."""
+    require_user(request)
+    found = request.app.state.services.actions.get_conversation(conversation_id)
+    if found is None:
+        raise ApiError(
+            404,
+            "Conversation does not exist",
+            "That chat could not be found.",
+            False,
+            "Open another conversation from the list.",
+        )
+    messages, actions = found
+    return {
+        "id": conversation_id,
+        "messages": [_message_payload(message) for message in messages],
+        "actions": [_action_payload(action) for action in actions],
+    }
 
 
 def latest_user_text(body: bytes) -> str:

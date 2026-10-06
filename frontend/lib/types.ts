@@ -6,6 +6,8 @@
  * - Invoice
  * - Contact
  * - ProposedAction
+ * - ConversationSummary
+ * - StoredMessage
  */
 
 export type LineItem = {
@@ -39,4 +41,18 @@ export type ProposedAction = {
   status: string;
   summary: string;
   payload: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type ConversationSummary = {
+  id: string;
+  updated_at: string;
+  preview: string;
+};
+
+export type StoredMessage = {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
 };

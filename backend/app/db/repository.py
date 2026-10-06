@@ -2,7 +2,9 @@
 
 Public API:
 - ActionRepository
+- ConversationSummary
 - StoredAction
+- StoredMessage
 """
 
 import json
@@ -10,9 +12,36 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.schema import ConversationRow, MessageRow, ProposedActionRow, utcnow
+
+_PREVIEW_LENGTH = 80
+_NARRATION_PREFIXES = (
+    "The user confirmed action ",
+    "The user denied action ",
+)
+
+
+@dataclass
+class StoredMessage:
+    """One chat message loaded from SQLite."""
+
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    created_at: datetime
+
+
+@dataclass
+class ConversationSummary:
+    """A thread shown in the chat history list."""
+
+    id: str
+    updated_at: datetime
+    preview: str
 
 
 @dataclass
@@ -45,6 +74,49 @@ class ActionRepository:
                 session.add(ConversationRow(id=conversation_id))
                 session.commit()
         return conversation_id
+
+    def list_conversations(self) -> list[ConversationSummary]:
+        """Return threads that have messages, newest activity first."""
+        with self._session_factory() as session:
+            conversations = session.scalars(select(ConversationRow)).all()
+            summaries: list[ConversationSummary] = []
+            for conversation in conversations:
+                messages = session.scalars(
+                    select(MessageRow)
+                    .where(MessageRow.conversation_id == conversation.id)
+                    .order_by(MessageRow.created_at, MessageRow.id)
+                ).all()
+                if not messages:
+                    continue
+                preview = ""
+                for message in messages:
+                    if message.role == "user" and not _is_narration(message.content):
+                        preview = _preview(message.content)
+                        break
+                updated_at = max(message.created_at for message in messages)
+                summaries.append(ConversationSummary(id=conversation.id, updated_at=updated_at, preview=preview))
+        summaries.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+        return summaries
+
+    def get_conversation(self, conversation_id: str) -> tuple[list[StoredMessage], list[StoredAction]] | None:
+        """Return messages and proposed actions, or None when the thread is unknown."""
+        with self._session_factory() as session:
+            if session.get(ConversationRow, conversation_id) is None:
+                return None
+            messages = session.scalars(
+                select(MessageRow)
+                .where(MessageRow.conversation_id == conversation_id)
+                .order_by(MessageRow.created_at, MessageRow.id)
+            ).all()
+            actions = session.scalars(
+                select(ProposedActionRow)
+                .where(ProposedActionRow.conversation_id == conversation_id)
+                .order_by(ProposedActionRow.created_at, ProposedActionRow.id)
+            ).all()
+            return (
+                [_to_message(row) for row in messages],
+                [_to_stored(row) for row in actions],
+            )
 
     def add_message(self, conversation_id: str, role: str, content: str) -> str:
         """Append a message to a conversation."""
@@ -117,6 +189,29 @@ class ActionRepository:
             session.commit()
             session.refresh(row)
             return _to_stored(row)
+
+
+def _is_narration(content: str) -> bool:
+    """Return whether a user message is a confirm or deny note for the model."""
+    text = content.strip()
+    return text.startswith(_NARRATION_PREFIXES)
+
+
+def _preview(content: str) -> str:
+    """Shorten a user message for the history list."""
+    compact = " ".join(content.split())
+    return compact[:_PREVIEW_LENGTH]
+
+
+def _to_message(row: MessageRow) -> StoredMessage:
+    """Map a table row into a stored message."""
+    return StoredMessage(
+        id=row.id,
+        conversation_id=row.conversation_id,
+        role=row.role,
+        content=row.content,
+        created_at=row.created_at,
+    )
 
 
 def _to_stored(row: ProposedActionRow) -> StoredAction:

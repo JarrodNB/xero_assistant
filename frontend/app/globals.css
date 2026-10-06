@@ -227,6 +227,50 @@ a.primary {
   height: calc(100vh - 64px);
 }
 
+.chat-workspace {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.conversation-row {
+  text-align: left;
+  background: white;
+  color: inherit;
+  border: 1px solid #e4dccb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.conversation-row.active {
+  border-color: #1c1915;
+  background: #e7f3ef;
+}
+
+.conversation-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
 .messages {
   flex: 1;
   overflow: auto;
@@ -325,5 +369,13 @@ a.primary {
 
   .summary-row {
     grid-template-columns: 1fr;
+  }
+
+  .chat-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-list {
+    max-height: 180px;
   }
 }

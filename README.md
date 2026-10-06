@@ -19,7 +19,7 @@ Create a [Xero web app](https://developer.xero.com/documentation/guides/oauth2/a
 docker compose up --build
 ```
 
-Open http://localhost:3000 and sign in with the username and password you chose. Share that pair with interviewers. Do not share the Xero client secret. The sidebar links to Invoices, Contacts, and Chat. Contacts lists the demo company's names and emails.
+Open http://localhost:3000 and sign in with the username and password you chose. Share that pair with interviewers. Do not share the Xero client secret. The sidebar links to Invoices, Contacts, and Chat. Chat can reopen earlier conversations stored on the server. Contacts lists the demo company's names and emails.
 
 ## Tests
 

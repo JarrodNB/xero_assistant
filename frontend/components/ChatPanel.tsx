@@ -9,9 +9,9 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { ApiRequestError, apiRequest } from "../lib/api";
-import { ProposedAction } from "../lib/types";
+import { ProposedAction, StoredMessage } from "../lib/types";
 
 type ChatPart = {
   type: string;
@@ -58,19 +58,6 @@ const OPTIONAL_FIELDS: Record<string, OptionalField[]> = {
     { key: "due_date", label: "Due date", inputType: "date", hint: "Blank means 14 days from today." },
   ],
 };
-
-/**
- * Return a stable conversation id for this browser tab.
- */
-function conversationId(): string {
-  const existing = window.sessionStorage.getItem("ledger-conversation-id");
-  if (existing) {
-    return existing;
-  }
-  const created = crypto.randomUUID();
-  window.sessionStorage.setItem("ledger-conversation-id", created);
-  return created;
-}
 
 /**
  * Read a proposed action out of a tool result.
@@ -184,6 +171,30 @@ function payloadText(payload: Record<string, unknown>, key: string): string {
 }
 
 /**
+ * Place each stored action on the assistant reply that follows it.
+ */
+function groupHistoryActions(
+  transcript: StoredMessage[],
+  actions: ProposedAction[],
+): { byMessageId: Record<string, ProposedAction[]>; trailing: ProposedAction[] } {
+  const assistants = transcript.filter((message) => message.role === "assistant");
+  const byMessageId: Record<string, ProposedAction[]> = {};
+  const trailing: ProposedAction[] = [];
+  const ordered = [...actions].sort((left, right) => (left.created_at ?? "").localeCompare(right.created_at ?? ""));
+  for (const action of ordered) {
+    const host = assistants.find((message) => message.created_at >= (action.created_at ?? ""));
+    if (!host) {
+      trailing.push(action);
+      continue;
+    }
+    const bucket = byMessageId[host.id] ?? [];
+    bucket.push(action);
+    byMessageId[host.id] = bucket;
+  }
+  return { byMessageId, trailing };
+}
+
+/**
  * Start a card's optional inputs from the proposed payload.
  */
 function optionalDraft(proposal: ProposedAction): Record<string, string> {
@@ -257,29 +268,42 @@ function invoiceAmountSentence(payload: Record<string, unknown>): string | null 
   return `Create an authorised invoice for ${payload.contact_name} for ${amount.toFixed(2)}`;
 }
 
+type ChatPanelProps = {
+  conversation: string;
+  transcript: StoredMessage[];
+  historyActions: ProposedAction[];
+  onActivity: () => void;
+};
+
 /**
  * Stream the assistant and confirm each proposed write on its own.
  */
-export function ChatPanel() {
-  const [id, setId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setId(conversationId());
-  }, []);
-
-  if (!id) {
-    return <p className="muted">Loading chat…</p>;
-  }
-
-  return <ChatSession conversation={id} />;
+export function ChatPanel({ conversation, transcript, historyActions, onActivity }: ChatPanelProps) {
+  return (
+    <ChatSession
+      conversation={conversation}
+      transcript={transcript}
+      historyActions={historyActions}
+      onActivity={onActivity}
+    />
+  );
 }
 
 /**
- * Stream one conversation after its id is known in the browser.
+ * Stream one conversation, including messages loaded from history.
  */
-function ChatSession({ conversation }: { conversation: string }) {
+function ChatSession({ conversation, transcript, historyActions, onActivity }: ChatPanelProps) {
+  const [seed] = useState(() =>
+    transcript.map((message) => ({
+      id: message.id,
+      role: message.role as "user" | "assistant",
+      parts: [{ type: "text" as const, text: message.content }],
+    })),
+  );
+  const grouped = groupHistoryActions(transcript, historyActions);
   const { messages, sendMessage, status } = useChat({
     id: conversation,
+    messages: seed,
     transport: new DefaultChatTransport({
       api: "/api/backend/chat",
       headers: { "X-Conversation-Id": conversation },
@@ -304,7 +328,11 @@ function ChatSession({ conversation }: { conversation: string }) {
       return;
     }
     setDraft("");
-    await sendMessage({ text });
+    try {
+      await sendMessage({ text });
+    } finally {
+      onActivity();
+    }
   }
 
   /**
@@ -372,6 +400,66 @@ function ChatSession({ conversation }: { conversation: string }) {
     }
   }
 
+  /**
+   * Render one confirmation card.
+   */
+  function renderProposal(proposal: ProposedAction) {
+    const actionStatus = statuses[proposal.action_id] ?? proposal.status;
+    const pending = actionStatus === "pending";
+    const values = valuesFor(proposal);
+    const editable = new Set(optionalFields(proposal.action_type).map((field) => field.key));
+    const fields = proposalFields(proposal.payload ?? {}).filter((field) => !editable.has(field.key));
+    const optional = optionalFields(proposal.action_type).filter((field) => pending || present(values[field.key]));
+    return (
+      <div className="proposal" key={proposal.action_id}>
+        <strong>{previewSummary(proposal, values)}</strong>
+        {fields.length > 0 || optional.length > 0 ? (
+          <dl>
+            {fields.map((field) => (
+              <div className="proposal-field" key={field.key}>
+                <dt>{field.label}</dt>
+                <dd>{field.value}</dd>
+              </div>
+            ))}
+            {optional.map((field) => (
+              <div className="proposal-field" key={field.key}>
+                <dt>{field.label}</dt>
+                <dd>
+                  {pending ? (
+                    <>
+                      <input
+                        type={field.inputType}
+                        value={values[field.key] ?? ""}
+                        aria-label={field.label}
+                        placeholder={field.placeholder}
+                        onChange={(event) => setOptionalValue(proposal, field.key, event.target.value)}
+                      />
+                      {field.hint ? <span className="muted proposal-hint">{field.hint}</span> : null}
+                    </>
+                  ) : (
+                    values[field.key]
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+        {cardErrors[proposal.action_id] ? <p className="error">{cardErrors[proposal.action_id]}</p> : null}
+        <span className="muted">{actionStatus}</span>
+        {pending ? (
+          <div className="actions">
+            <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
+              Confirm
+            </button>
+            <button className="secondary" type="button" onClick={() => void decide(proposal, "deny")}>
+              Deny
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="messages">
@@ -391,65 +479,12 @@ function ChatSession({ conversation }: { conversation: string }) {
                   {part.text}
                 </p>
               ))}
-              {proposals.map((proposal) => {
-                const actionStatus = statuses[proposal.action_id] ?? proposal.status;
-                const pending = actionStatus === "pending";
-                const values = valuesFor(proposal);
-                const editable = new Set(optionalFields(proposal.action_type).map((field) => field.key));
-                const fields = proposalFields(proposal.payload ?? {}).filter((field) => !editable.has(field.key));
-                const optional = optionalFields(proposal.action_type).filter((field) => pending || present(values[field.key]));
-                return (
-                  <div className="proposal" key={proposal.action_id}>
-                    <strong>{previewSummary(proposal, values)}</strong>
-                    {fields.length > 0 || optional.length > 0 ? (
-                      <dl>
-                        {fields.map((field) => (
-                          <div className="proposal-field" key={field.key}>
-                            <dt>{field.label}</dt>
-                            <dd>{field.value}</dd>
-                          </div>
-                        ))}
-                        {optional.map((field) => (
-                          <div className="proposal-field" key={field.key}>
-                            <dt>{field.label}</dt>
-                            <dd>
-                              {pending ? (
-                                <>
-                                  <input
-                                    type={field.inputType}
-                                    value={values[field.key] ?? ""}
-                                    aria-label={field.label}
-                                    placeholder={field.placeholder}
-                                    onChange={(event) => setOptionalValue(proposal, field.key, event.target.value)}
-                                  />
-                                  {field.hint ? <span className="muted proposal-hint">{field.hint}</span> : null}
-                                </>
-                              ) : (
-                                values[field.key]
-                              )}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : null}
-                    {cardErrors[proposal.action_id] ? <p className="error">{cardErrors[proposal.action_id]}</p> : null}
-                    <span className="muted">{actionStatus}</span>
-                    {pending ? (
-                      <div className="actions">
-                        <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
-                          Confirm
-                        </button>
-                        <button className="secondary" type="button" onClick={() => void decide(proposal, "deny")}>
-                          Deny
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {proposals.map((proposal) => renderProposal(proposal))}
+              {(grouped.byMessageId[message.id] ?? []).map((proposal) => renderProposal(proposal))}
             </div>
           );
         })}
+        {grouped.trailing.map((proposal) => renderProposal(proposal))}
       </div>
       <form className="chat-form" onSubmit={(event) => void onSubmit(event)}>
         <input
