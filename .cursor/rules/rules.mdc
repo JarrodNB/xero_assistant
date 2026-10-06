@@ -1,4 +1,5 @@
 ---
+description: Engineering standards for this repository
 alwaysApply: true
 ---
 
@@ -17,7 +18,7 @@ alwaysApply: true
 3. **Organize files into appropriate folders.**
 
    * Place files in the folder that best represents their responsibility.
-   * Avoid unnecessary nesting and folder bloat.
+   * Avoid folder bloat.
 
 4. **Write extensive tests.**
 
@@ -67,6 +68,8 @@ alwaysApply: true
     * Avoid infrastructure that introduces significant recurring costs without a clear benefit.
     * Do not introduce managed services, distributed infrastructure, or additional infrastructure solely for hypothetical scale.
     * Architectural decisions should consider both technical quality and ongoing hosting cost.
+
+13. **Every folder should have an Agents.md**
 
 ---
 

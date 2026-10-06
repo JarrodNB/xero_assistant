@@ -1,0 +1,20 @@
+---
+description: Run this repo in Docker from the Ubuntu WSL distro, never on the Windows host
+alwaysApply: true
+---
+
+# Docker
+
+Install and run everything through Docker Compose. Do not create a `.venv`, and do not run `pip`, `python`, or `py` on the Windows host.
+
+The Shell tool is PowerShell. Docker Desktop's default WSL distro is `docker-desktop`, which does not have this project's containers. Use the Ubuntu distro. The repo path there is `/mnt/c/Users/Jarrod/Desktop/xero_assistant`.
+
+```powershell
+wsl -d Ubuntu -e bash -lc 'cd /mnt/c/Users/Jarrod/Desktop/xero_assistant && docker compose run --rm --build --no-deps backend pytest -q'
+```
+
+- Add Python dependencies in `backend/pyproject.toml`, then rebuild with `--build`. A `pip install` inside `docker compose run` disappears when that container exits.
+- `./backend/app`, `./backend/tests`, and `./backend/evals` are mounted, so code-only changes do not need a rebuild.
+- PowerShell breaks nested quotes. Do not pass `python -c` with quotes through `wsl`. Put a short script under `backend/evals` or `backend/app`, run it with `docker compose run`, then delete it.
+- Start the app with `docker compose up --build` from that same Ubuntu command. The site is http://localhost:3000 and the API is http://localhost:8000.
+- Compose loads `.env`. Do not print it, and do not commit it.
