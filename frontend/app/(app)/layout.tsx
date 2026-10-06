@@ -19,21 +19,34 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [xeroConnected, setXeroConnected] = useState(true);
+  const [xeroTenantName, setXeroTenantName] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     /**
      * Send unsigned visitors to the login page.
      */
     async function checkSession() {
-      const signedIn = await fetchSession();
-      if (!signedIn) {
+      const status = await fetchSession();
+      if (!status.authenticated) {
         router.replace("/login");
         return;
+      }
+      setXeroConnected(status.xeroConnected);
+      setXeroTenantName(status.xeroTenantName);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("xero") === "denied") {
+        setNotice("Xero authorisation was not completed. Connect again and choose the Demo Company.");
+      } else if (params.get("xero") === "failed") {
+        setNotice("Xero did not return a connection. Check the redirect URI in the Xero app, then try again.");
+      } else if (params.get("xero") === "connected") {
+        setNotice(`Connected to ${status.xeroTenantName || "Xero"}.`);
       }
       setReady(true);
     }
     void checkSession();
-  }, [router]);
+  }, [pathname, router]);
 
   /**
    * End the session and return to the login page.
@@ -63,7 +76,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
           Log out
         </button>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {notice ? <p className={notice.startsWith("Connected") ? "muted" : "error"}>{notice}</p> : null}
+        {xeroConnected ? null : (
+          <div className="connect-banner panel">
+            <p>Connect the Xero Demo Company before loading invoices.</p>
+            <a className="primary" href="/api/xero/start">
+              Connect Xero
+            </a>
+          </div>
+        )}
+        {xeroConnected && xeroTenantName ? <p className="muted tenant-label">{xeroTenantName}</p> : null}
+        {children}
+      </main>
     </div>
   );
 }

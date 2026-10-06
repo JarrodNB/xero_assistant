@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiRequest } from "../../../lib/api";
+import { ApiRequestError, apiRequest } from "../../../lib/api";
 import { Invoice } from "../../../lib/types";
 
 /**
@@ -44,7 +44,8 @@ export default function InvoiceListPage() {
         setSummary(summaryBody);
         setError("");
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Invoices could not be loaded.");
+        const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "Invoices could not be loaded.";
+        setError(message);
       }
     }
     void load();

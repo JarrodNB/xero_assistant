@@ -3,6 +3,7 @@
  *
  * Public API:
  * - ApiRequestError
+ * - SessionStatus
  * - apiRequest
  * - fetchSession
  */
@@ -39,14 +40,28 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   return body as T;
 }
 
+export type SessionStatus = {
+  authenticated: boolean;
+  xeroConnected: boolean;
+  xeroTenantName: string;
+};
+
 /**
- * Return whether the shared interviewer session is active.
+ * Return the interviewer session and whether Xero is connected.
  */
-export async function fetchSession(): Promise<boolean> {
+export async function fetchSession(): Promise<SessionStatus> {
   const response = await fetch("/api/backend/auth/session", { credentials: "include" });
   if (!response.ok) {
-    return false;
+    return { authenticated: false, xeroConnected: false, xeroTenantName: "" };
   }
-  const body = (await response.json()) as { authenticated?: boolean };
-  return body.authenticated === true;
+  const body = (await response.json()) as {
+    authenticated?: boolean;
+    xero_connected?: boolean;
+    xero_tenant_name?: string;
+  };
+  return {
+    authenticated: body.authenticated === true,
+    xeroConnected: body.xero_connected === true,
+    xeroTenantName: body.xero_tenant_name ?? "",
+  };
 }

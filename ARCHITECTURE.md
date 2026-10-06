@@ -4,7 +4,7 @@ Ledger is two containers plus a SQLite file.
 
 - `frontend` is a Next.js app. The browser talks only to it. `/api/backend/*` is rewritten to the API.
 - `backend` is FastAPI. It owns the interviewer session, the invoice service, the chat agent, and SQLite.
-- Xero's demo company is the source of truth for contacts and invoices. A custom connection uses the client-credentials grant, so interviewers never connect a Xero organisation.
+- Xero's demo company is the source of truth for contacts and invoices. A signed-in interviewer connects it once with the OAuth authorisation-code flow. The server stores the refresh token and tenant id, then refreshes access tokens itself.
 - SQLite stores conversations, messages, and proposed actions.
 
 ```mermaid

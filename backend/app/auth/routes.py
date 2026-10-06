@@ -61,7 +61,12 @@ def logout(request: Request) -> dict[str, bool]:
 
 
 @router.get("/session")
-def session(request: Request) -> dict[str, bool]:
-    """Report whether the current cookie is signed in."""
+def session(request: Request) -> dict[str, bool | str]:
+    """Report whether the current cookie is signed in and Xero is connected."""
     settings: Settings = request.app.state.settings
-    return {"authenticated": request.session.get("user") == settings.app_username}
+    connection = request.app.state.xero_connections.load()
+    return {
+        "authenticated": request.session.get("user") == settings.app_username,
+        "xero_connected": connection is not None,
+        "xero_tenant_name": connection.tenant_name if connection else "",
+    }

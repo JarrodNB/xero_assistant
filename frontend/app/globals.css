@@ -125,6 +125,26 @@ td {
   color: white;
 }
 
+a.primary {
+  display: inline-block;
+}
+
+.connect-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.connect-banner p {
+  margin: 0;
+}
+
+.tenant-label {
+  margin: 0 0 12px;
+}
+
 .secondary {
   background: #efe8da;
   color: #1c1915;

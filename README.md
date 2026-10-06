@@ -13,7 +13,7 @@ docker compose run --rm --no-deps backend python -m app.auth.hash_password --pas
 
 Put the printed hash in `.env` as `APP_PASSWORD_HASH`. Docker Compose treats `$` as a variable, so write each `$` in the hash as `$$`. Also set `APP_USERNAME`, `SESSION_SECRET`, `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, and `OPENAI_API_KEY`. Set `TYPESAFE_API_KEY` to screen each user message with the Jev model before the chat model runs. Jev does not grade the assistant reply.
 
-Create a [Xero custom connection](https://developer.xero.com/custom-development), authorise it to the Demo Company, and grant `accounting.invoices`, `accounting.contacts`, and `accounting.settings`. The connection is free while it points at the demo company.
+Create a [Xero web app](https://developer.xero.com/documentation/guides/oauth2/auth-flow) and set its redirect URI to `http://localhost:3000/api/xero/callback`. Put the client id and client secret in `.env`. After you sign in, choose Connect Xero and authorise the Demo Company. The server stores that refresh token and reuses it for every interviewer. The connection is free for up to 25 organisations.
 
 ```bash
 docker compose up --build

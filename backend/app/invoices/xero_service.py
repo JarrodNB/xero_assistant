@@ -338,6 +338,13 @@ def _where_clause(status: str | None, date_from: date | None, date_to: date | No
 
 def _from_xero(error: XeroApiError) -> InvoiceServiceError:
     """Hide Xero internals while keeping a useful next step."""
+    if error.message == "Xero is not connected.":
+        return InvoiceServiceError(
+            "Xero is not connected",
+            "This server has no Demo Company authorisation.",
+            False,
+            "Choose Connect Xero and authorise the Demo Company.",
+        )
     retryable = error.status_code >= 500 or error.status_code == 429
     return InvoiceServiceError(
         "Xero request failed",

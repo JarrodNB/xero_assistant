@@ -7,6 +7,7 @@ Public API:
 - test_confirm_and_deny_are_separate
 """
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 
@@ -21,6 +22,7 @@ from app.errors import ApiError
 from app.invoices.records import ContactRecord, InvoiceRecord
 from app.invoices.xero_service import XeroInvoiceService
 from app.xero.client import XeroClient
+from app.xero.connection_store import XeroConnection, XeroConnectionStore
 from sqlalchemy.orm import sessionmaker
 
 from tests.conftest import sign_in
@@ -48,12 +50,15 @@ async def test_missing_contact_does_not_create_one_in_xero() -> None:
         """Record accounting calls and return an empty contact search."""
         calls.append((request.method, request.url.path))
         if request.url.host == "identity.xero.com":
-            return httpx.Response(200, json={"access_token": "token-123", "expires_in": 1800})
+            return httpx.Response(
+                200,
+                json={"access_token": "token-123", "refresh_token": "refresh-2", "expires_in": 1800},
+            )
         if request.url.path.endswith("/Contacts"):
             return httpx.Response(200, json={"Contacts": []})
         return httpx.Response(200, json={"Invoices": []})
 
-    client = XeroClient("id", "secret", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    client = _connected_client(handler)
     service = XeroInvoiceService(client)
     from app.invoices.gateway import ContactNotFoundError
 
@@ -156,23 +161,28 @@ def test_ui_save_also_refuses_to_create_a_missing_contact(api) -> None:
     assert fake.write_calls == ["create_contact", "create_invoice"]
 
 
-def test_token_request_does_not_send_a_tenant_header() -> None:
-    """Custom connections authenticate with the client secret and no tenant header."""
+def test_accounting_request_sends_the_stored_tenant() -> None:
+    """Invoice reads use the tenant saved during the OAuth callback."""
     seen: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         """Capture the accounting request headers and return no invoices."""
         if "identity.xero.com" in str(request.url):
-            return httpx.Response(200, json={"access_token": "token-123", "expires_in": 1800})
+            return httpx.Response(
+                200,
+                json={"access_token": "token-123", "refresh_token": "refresh-2", "expires_in": 1800},
+            )
         seen["authorization"] = request.headers["authorization"]
         seen["tenant"] = request.headers.get("xero-tenant-id", "")
         return httpx.Response(200, json={"Invoices": []})
 
     import asyncio
 
+    store = _MemoryStore(XeroConnection("refresh-1", "tenant-1", "Demo Company"))
+
     async def run() -> None:
         """Perform one invoice read."""
-        client = XeroClient("id", "secret", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        client = XeroClient("id", "secret", store, httpx.AsyncClient(transport=httpx.MockTransport(handler)))
         service = XeroInvoiceService(client)
         invoices = await service.find_invoices(None, None, None, None)
         assert invoices == []
@@ -180,5 +190,29 @@ def test_token_request_does_not_send_a_tenant_header() -> None:
 
     asyncio.run(run())
     assert seen["authorization"] == "Bearer token-123"
-    assert seen["tenant"] == ""
+    assert seen["tenant"] == "tenant-1"
     assert "secret" not in seen["authorization"]
+    assert store.connection is not None
+    assert store.connection.refresh_token == "refresh-2"
+
+
+def _connected_client(handler: Callable[[httpx.Request], httpx.Response]) -> XeroClient:
+    """Build a client that already has a Demo Company refresh token."""
+    store = _MemoryStore(XeroConnection("refresh-1", "tenant-1", "Demo Company"))
+    return XeroClient("id", "secret", store, httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+
+
+class _MemoryStore(XeroConnectionStore):
+    """In-memory stand-in that skips SQLite."""
+
+    def __init__(self, connection: XeroConnection) -> None:
+        """Start from a connection that tests can refresh."""
+        self.connection: XeroConnection | None = connection
+
+    def load(self) -> XeroConnection | None:
+        """Return the in-memory connection."""
+        return self.connection
+
+    def save(self, connection: XeroConnection) -> None:
+        """Replace the in-memory connection."""
+        self.connection = connection

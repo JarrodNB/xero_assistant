@@ -1,10 +1,11 @@
-"""Purpose: SQLite tables for conversations, messages, and proposed actions.
+"""Purpose: SQLite tables for conversations, messages, proposed actions, and the Xero connection.
 
 Public API:
 - Base
 - ConversationRow
 - MessageRow
 - ProposedActionRow
+- XeroConnectionRow
 - create_engine_for
 """
 
@@ -44,6 +45,18 @@ class MessageRow(Base):
     role: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class XeroConnectionRow(Base):
+    """The one Demo Company authorisation for this server."""
+
+    __tablename__ = "xero_connection"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    refresh_token: Mapped[str] = mapped_column(Text)
+    tenant_id: Mapped[str] = mapped_column(String)
+    tenant_name: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ProposedActionRow(Base):

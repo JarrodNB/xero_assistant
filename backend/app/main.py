@@ -23,20 +23,32 @@ from app.mcp_server.server import build_mcp_server
 from app.observability import configure_observability
 from app.runtime import AppServices
 from app.xero.client import XeroClient
+from app.xero.connection_store import XeroConnectionStore
+from app.xero.routes import router as xero_router
 
 
-def create_app(settings: Settings | None = None, invoices: object | None = None, agent: object | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    invoices: object | None = None,
+    agent: object | None = None,
+    xero_http: object | None = None,
+) -> FastAPI:
     """Build the API with a session cookie and the invoice routes."""
     resolved = settings or get_settings()
     configure_observability(resolved)
     engine = create_engine_for(resolved.database_path)
-    repository = ActionRepository(sessionmaker(bind=engine))
-    gateway = invoices or XeroInvoiceService(XeroClient(resolved.xero_client_id, resolved.xero_client_secret))
+    session_factory = sessionmaker(bind=engine)
+    repository = ActionRepository(session_factory)
+    connections = XeroConnectionStore(session_factory)
+    xero = XeroClient(resolved.xero_client_id, resolved.xero_client_secret, connections, xero_http)  # type: ignore[arg-type]
+    gateway = invoices or XeroInvoiceService(xero)
     mcp_server = build_mcp_server()
     chat_agent = agent or build_chat_agent(resolved.model, mcp_server)
 
     app = FastAPI(title="Xero Assistant")
     app.state.settings = resolved
+    app.state.xero = xero
+    app.state.xero_connections = connections
     app.state.services = AppServices(invoices=gateway, actions=repository)  # type: ignore[arg-type]
     app.state.agent = chat_agent
     app.state.mcp_server = mcp_server
@@ -50,6 +62,7 @@ def create_app(settings: Settings | None = None, invoices: object | None = None,
     )
     app.add_exception_handler(ApiError, _api_error)
     app.include_router(auth_router)
+    app.include_router(xero_router)
     app.include_router(invoices_router)
     app.include_router(actions_router)
     app.include_router(chat_router)
