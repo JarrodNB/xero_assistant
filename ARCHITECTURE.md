@@ -32,8 +32,12 @@ sequenceDiagram
   FastAPI->>Xero: Create invoice
 ```
 
-The model can call `find_contacts`, `find_invoices`, `get_invoice`, `summarize_invoices`, `compare_invoice_totals`, and `propose_action`. `propose_action` inserts a pending row. The confirm route is the only chat path that writes to Xero. The invoice editor calls the same invoice service when a person clicks Save or Void.
+Each MCP tool lives in its own module under `backend/app/mcp_server/tools/`. The model can call `find_contacts`, `find_invoices`, `get_invoice`, `summarize_invoices`, `compare_invoice_totals`, and `propose_action`. `propose_action` inserts a pending row. The confirm route is the only chat path that writes to Xero. The invoice editor calls the same invoice service when a person clicks Save or Void.
+
+Before a prompt reaches the chat model, an input guardrail redacts secrets, card numbers, SSNs, and IBANs. Email addresses stay, because a contact email is part of creating an invoice. The same redaction runs on tool results. When `TYPESAFE_API_KEY` is set, that same input guardrail then calls the Jev model (`jev-latest` by default) once on the user message. Jev returns hazard probabilities; this app applies the strict thresholds and refuses the turn on block, review, or a self-harm support route. There is no separate reviewer. Jev does not see the assistant reply.
+
+`backend/evals/invoice_golden.yaml` is the golden dataset. Each case has its own LLM-as-a-judge rubric, and the dataset also carries a G-Eval rubric. Shared checks require a string answer and reject a claim that Xero was changed unless the case already includes an execution result. `pytest` runs those shared checks offline. The model judges run only when you explicitly run the eval command with a real `OPENAI_API_KEY`.
 
 Later hosting can be a single small machine running these two containers. This milestone does not add a database server, Redis, or a cluster.
 
-Langfuse receives traces only when its keys are set. The Xero HTTP client is not instrumented, so access tokens stay on the server.
+Langfuse receives traces only when its keys are set. The Xero HTTP client is not instrumented, so access tokens stay on the server. The guardrails redact secrets before they are placed in model prompts.

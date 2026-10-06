@@ -19,7 +19,7 @@ from app.db.schema import create_engine_for
 from app.errors import ApiError
 from app.invoices.routes import router as invoices_router
 from app.invoices.xero_service import XeroInvoiceService
-from app.mcp_server.tools import build_mcp_server
+from app.mcp_server.server import build_mcp_server
 from app.observability import configure_observability
 from app.runtime import AppServices
 from app.xero.client import XeroClient

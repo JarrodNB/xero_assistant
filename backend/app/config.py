@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     xero_client_id: str = ""
     xero_client_secret: str = ""
     model: str = "openai:gpt-4.1-mini"
+    typesafe_api_key: str = ""
+    jev_model: str = "jev-latest"
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"

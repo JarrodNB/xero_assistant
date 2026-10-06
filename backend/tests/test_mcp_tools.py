@@ -12,7 +12,7 @@ from fastmcp import Client
 
 from app.db.repository import ActionRepository
 from app.db.schema import create_engine_for
-from app.mcp_server.tools import MCP_TOOL_NAMES, build_mcp_server
+from app.mcp_server.server import MCP_TOOL_NAMES, build_mcp_server
 from app.runtime import AppServices, current_conversation_id, current_services
 from sqlalchemy.orm import sessionmaker
 

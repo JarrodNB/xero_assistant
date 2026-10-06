@@ -14,6 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.auth.routes import require_user
+from app.chat.jev import current_jev, screener_for
 from app.runtime import current_conversation_id, current_services
 from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
@@ -80,11 +81,13 @@ async def chat(request: Request) -> Response:
         """Run the agent while the MCP tools can see this conversation."""
         services_token = current_services.set(services)
         conversation_token = current_conversation_id.set(conversation_id)
+        jev_token = current_jev.set(screener_for(request.app.state.settings))
         try:
             event_stream = adapter.run_stream(on_complete=on_complete)
             async for chunk in adapter.encode_stream(event_stream):
                 yield chunk
         finally:
+            current_jev.reset(jev_token)
             current_conversation_id.reset(conversation_token)
             current_services.reset(services_token)
 
