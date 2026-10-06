@@ -1,5 +1,5 @@
 /**
- * Purpose: Root document for the invoice assistant.
+ * Purpose: Root document for the Xero assistant.
  *
  * Public API:
  * - RootLayout
@@ -11,7 +11,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ledger",
-  description: "Invoice assistant for a Xero demo company.",
+  description: "Xero assistant for a demo company. Current domains are contacts and invoices.",
 };
 
 /**

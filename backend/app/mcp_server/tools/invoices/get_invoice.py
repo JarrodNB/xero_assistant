@@ -13,7 +13,7 @@ from app.mcp_server.context import services
 
 
 def register_get_invoice(server: FastMCP) -> None:
-    """Register get_invoice on the invoice MCP server."""
+    """Register get_invoice on the MCP server."""
 
     @server.tool
     async def get_invoice(invoice_number: str) -> dict:

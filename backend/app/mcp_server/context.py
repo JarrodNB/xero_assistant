@@ -1,4 +1,4 @@
-"""Purpose: Current-turn services and date parsing shared by the invoice MCP tools.
+"""Purpose: Current-turn services and date parsing shared by the MCP tools.
 
 Public API:
 - services

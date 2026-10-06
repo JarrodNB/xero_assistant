@@ -1,6 +1,6 @@
 # Ledger
 
-An invoice assistant for Xero's demo company. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read invoices and propose changes, and each change runs only after its own confirmation.
+A Xero assistant for the demo company. The current domains are contacts and invoices. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read those records and propose changes, and each change runs only after its own confirmation.
 
 ## Run with Docker
 

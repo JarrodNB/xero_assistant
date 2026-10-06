@@ -1,4 +1,4 @@
-"""Purpose: Instructions for the invoice assistant.
+"""Purpose: Instructions for the chat agent.
 
 Public API:
 - SYSTEM_PROMPT

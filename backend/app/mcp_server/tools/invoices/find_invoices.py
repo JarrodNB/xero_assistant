@@ -13,7 +13,7 @@ from app.mcp_server.context import parse_date, services
 
 
 def register_find_invoices(server: FastMCP) -> None:
-    """Register find_invoices on the invoice MCP server."""
+    """Register find_invoices on the MCP server."""
 
     @server.tool
     async def find_invoices(

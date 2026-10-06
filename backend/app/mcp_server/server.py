@@ -1,4 +1,4 @@
-"""Purpose: Build the in-process MCP server from one module per tool.
+"""Purpose: Build the in-process MCP server from one module per domain tool.
 
 Public API:
 - READ_TOOL_NAMES
@@ -30,8 +30,8 @@ MCP_TOOL_NAMES = READ_TOOL_NAMES | {"propose_action"}
 
 
 def build_mcp_server() -> FastMCP:
-    """Register each invoice tool on a new in-process MCP server."""
-    server = FastMCP("xero-invoices")
+    """Register each domain tool on a new in-process MCP server."""
+    server = FastMCP("xero-assistant")
     register_find_contacts(server)
     register_find_invoices(server)
     register_get_invoice(server)

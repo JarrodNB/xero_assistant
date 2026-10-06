@@ -15,7 +15,7 @@ from app.mcp_server.context import parse_date, services
 
 
 def register_summarize_invoices(server: FastMCP) -> None:
-    """Register summarize_invoices on the invoice MCP server."""
+    """Register summarize_invoices on the MCP server."""
 
     @server.tool
     async def summarize_invoices(

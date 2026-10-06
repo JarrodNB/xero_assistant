@@ -14,7 +14,7 @@ from app.chat.prompt import SYSTEM_PROMPT
 
 
 def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
-    """Create an agent whose only tools are the invoice MCP server."""
+    """Create an agent whose tools come from the in-process MCP server."""
     return Agent(
         model,
         instructions=SYSTEM_PROMPT,

@@ -13,7 +13,7 @@ from app.mcp_server.context import require_date, services
 
 
 def register_compare_invoice_totals(server: FastMCP) -> None:
-    """Register compare_invoice_totals on the invoice MCP server."""
+    """Register compare_invoice_totals on the MCP server."""
 
     @server.tool
     async def compare_invoice_totals(

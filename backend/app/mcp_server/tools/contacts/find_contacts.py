@@ -13,7 +13,7 @@ from app.mcp_server.context import services
 
 
 def register_find_contacts(server: FastMCP) -> None:
-    """Register find_contacts on the invoice MCP server."""
+    """Register find_contacts on the MCP server."""
 
     @server.tool
     async def find_contacts(name: str) -> dict:

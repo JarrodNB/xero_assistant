@@ -15,7 +15,7 @@ from app.runtime import current_conversation_id
 
 
 def register_propose_action(server: FastMCP) -> None:
-    """Register propose_action on the invoice MCP server."""
+    """Register propose_action on the MCP server."""
 
     @server.tool
     async def propose_action(action_type: str, payload_json: str) -> dict:
