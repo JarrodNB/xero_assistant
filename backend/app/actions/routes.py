@@ -5,9 +5,13 @@ Public API:
 - action_payload
 """
 
+import json
+from typing import Any
+
 from fastapi import APIRouter, Request
 
 from app.actions.executor import execute_action, failure_body
+from app.actions.payloads import apply_optional_overrides
 from app.auth.routes import require_user
 from app.db.repository import StoredAction
 from app.errors import ApiError
@@ -73,6 +77,19 @@ def get_action(action_id: str, request: Request) -> dict[str, object]:
 async def confirm_action(action_id: str, request: Request) -> dict[str, object]:
     """Execute one pending action after the person confirms it."""
     services, action = _pending_action(request, action_id)
+    overrides = await _confirm_overrides(request)
+    if overrides:
+        payload, summary = apply_optional_overrides(action.action_type, action.payload, overrides)
+        updated = services.actions.update_pending_payload(action_id, payload, summary)
+        if updated is None:
+            raise ApiError(
+                409,
+                "Action is already finished",
+                "This action is no longer pending.",
+                False,
+                "Propose a new action if something else still needs to change.",
+            )
+        action = updated
     try:
         result = await execute_action(action, services.invoices)
     except ApiError as error:
@@ -95,3 +112,31 @@ def deny_action(action_id: str, request: Request) -> dict[str, object]:
     }
     stored = services.actions.update_action(action_id, "denied", result)
     return action_payload(stored)
+
+
+async def _confirm_overrides(request: Request) -> dict[str, Any]:
+    """Read optional confirm fields, or an empty object when the body is absent."""
+    raw = await request.body()
+    if not raw or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ApiError(
+            422,
+            "Confirm body is not JSON",
+            "The confirm body must be a JSON object.",
+            False,
+            "Send email, reference, or due date as a JSON object.",
+        ) from error
+    if parsed is None:
+        return {}
+    if not isinstance(parsed, dict):
+        raise ApiError(
+            422,
+            "Confirm body is not an object",
+            "The confirm body must be a JSON object.",
+            False,
+            "Send email, reference, or due date as a JSON object.",
+        )
+    return parsed

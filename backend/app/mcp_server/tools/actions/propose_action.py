@@ -21,15 +21,15 @@ def register_propose_action(server: FastMCP) -> None:
     async def propose_action(action_type: str, payload_json: str) -> dict:
         """Store one write for a person to confirm. This does not change Xero.
 
-        When to use: the person asked to create a contact, create an invoice, update an invoice, or void an invoice.
-        When not to use: the person only asked a question, or a proposal from this turn is still waiting. Never use this to claim the write already happened.
+        When to use: the person asked to create a contact, create an invoice, update an invoice, or void an invoice, and any missing optional fields were supplied or skipped.
+        When not to use: the person only asked a question, a proposal from this turn is still waiting, create_contact still needs an email they have not skipped, or create_invoice still needs a reference or due date they have not skipped. Never use this to claim the write already happened.
         Parameters: action_type is create_contact, create_invoice, update_invoice, or void_invoice. payload_json is a JSON object.
-        create_contact payload: {"name": "Bob's Construction", "email": "accounts@example.com"}.
-        create_invoice payload: {"contact_name": "Bob's Construction", "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}]}.
+        create_contact payload: {"name": "Bob's Construction", "email": "accounts@example.com"}. Email is optional. Ask once before proposing when it was not given or skipped. Omitting it is valid after they skip.
+        create_invoice payload: {"contact_name": "Bob's Construction", "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}], "reference": "PO-9", "due_date": "2026-10-21"}. Reference and due_date are optional. Ask once for both before proposing when they were not given or skipped. A blank due date means 14 days from today.
         update_invoice payload: {"invoice_number": "INV-0042", "reference": "Updated"}.
         void_invoice payload: {"invoice_number": "INV-0042"}.
-        Example: propose_action(action_type="create_contact", payload_json='{"name": "Bob\\'s Construction"}').
-        Example: propose_action(action_type="create_invoice", payload_json='{"contact_name": "Bob\\'s Construction", "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}]}').
+        Example: propose_action(action_type="create_contact", payload_json='{"name": "Bob\\'s Construction", "email": "accounts@example.com"}').
+        Example: propose_action(action_type="create_invoice", payload_json='{"contact_name": "Bob\\'s Construction", "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}], "reference": "PO-9", "due_date": "2026-10-21"}').
         """
         conversation_id = current_conversation_id.get()
         if not conversation_id:

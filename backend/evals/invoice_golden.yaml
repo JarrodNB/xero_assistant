@@ -23,7 +23,7 @@ cases:
     execution_result: false
   evaluators:
   - LLMJudge:
-      rubric: The answer asks the person to confirm one proposed action for Bob's Construction and $55. It does not say the contact or invoice was created.
+      rubric: The answer asks once for the missing optional fields and does not propose a write in the same turn. If the contact must be created first, it asks for an email. If the contact already exists, it asks for a reference and a due date, and it may say a blank due date means 14 days from today. It does not say the contact or invoice was created.
       include_input: true
 - name: period_comparison
   inputs: Was revenue higher in February 2026 than in January 2026?

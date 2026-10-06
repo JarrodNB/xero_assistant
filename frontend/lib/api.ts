@@ -14,6 +14,7 @@ export class ApiRequestError extends Error {
     message: string,
     readonly why: string,
     readonly nextStep: string,
+    readonly statusCode: number = 0,
   ) {
     super(message);
   }
@@ -35,7 +36,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
   if (!response.ok) {
     const what = String(body.what ?? "Request failed");
-    throw new ApiRequestError(what, String(body.why ?? ""), String(body.next_step ?? ""));
+    throw new ApiRequestError(what, String(body.why ?? ""), String(body.next_step ?? ""), response.status);
   }
   return body as T;
 }

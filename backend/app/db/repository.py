@@ -92,6 +92,19 @@ class ActionRepository:
                 return None
             return _to_stored(row)
 
+    def update_pending_payload(self, action_id: str, payload: dict, summary: str) -> StoredAction | None:
+        """Replace the payload and summary while the action is still pending."""
+        with self._session_factory() as session:
+            row = session.get(ProposedActionRow, action_id)
+            if row is None or row.status != "pending":
+                return None
+            row.payload_json = json.dumps(payload)
+            row.summary = summary
+            row.updated_at = utcnow()
+            session.commit()
+            session.refresh(row)
+            return _to_stored(row)
+
     def update_action(self, action_id: str, status: str, result: dict) -> StoredAction:
         """Set the status and result of an existing action."""
         with self._session_factory() as session:

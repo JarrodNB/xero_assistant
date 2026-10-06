@@ -5,6 +5,12 @@ Public API:
 - test_missing_contact_does_not_create_one_in_xero
 - test_confirm_missing_contact_does_not_write
 - test_confirm_and_deny_are_separate
+- test_confirm_contact_stores_email
+- test_confirm_blank_email_leaves_email_unset
+- test_confirm_invoice_applies_reference_and_due_date
+- test_confirm_cannot_change_required_fields
+- test_confirm_rejects_an_invalid_due_date
+- test_system_prompt_asks_for_optional_create_fields
 - test_list_contacts_returns_name_and_email
 - test_list_contacts_pages_until_a_short_page
 """
@@ -18,6 +24,7 @@ import pytest
 
 from app.actions.executor import execute_action
 from app.actions.payloads import parse_action
+from app.chat.prompt import SYSTEM_PROMPT
 from app.db.repository import ActionRepository
 from app.db.schema import create_engine_for
 from app.errors import ApiError
@@ -134,6 +141,146 @@ def test_confirm_and_deny_are_separate(api) -> None:
     assert denied_response.status_code == 200
     assert denied_response.json()["status"] == "denied"
     assert fake.write_calls == ["create_invoice"]
+
+
+def test_confirm_contact_stores_email(api) -> None:
+    """A confirm body can add an email to a contact proposal."""
+    client, fake = api
+    sign_in(client)
+    repository: ActionRepository = client.app.state.services.actions
+    repository.ensure_conversation("chat-1")
+    action = repository.create_action("chat-1", "create_contact", {"name": "Ada"}, "Create contact Ada.")
+    response = client.post(f"/actions/{action.id}/confirm", json={"email": " ada@example.com "})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contact"]["email"] == "ada@example.com"
+    assert body["summary"] == "Create contact Ada with email ada@example.com."
+    assert fake.write_calls == ["create_contact"]
+    assert fake.contacts[-1].email == "ada@example.com"
+    stored = repository.get_action(action.id)
+    assert stored is not None
+    assert stored.payload["email"] == "ada@example.com"
+    assert stored.summary == body["summary"]
+
+
+def test_confirm_blank_email_leaves_email_unset(api) -> None:
+    """A blank email override does not store an email."""
+    client, fake = api
+    sign_in(client)
+    repository: ActionRepository = client.app.state.services.actions
+    repository.ensure_conversation("chat-1")
+    action = repository.create_action("chat-1", "create_contact", {"name": "Ada"}, "Create contact Ada.")
+    response = client.post(f"/actions/{action.id}/confirm", json={"email": "  "})
+    assert response.status_code == 200
+    assert response.json()["contact"]["email"] is None
+    assert response.json()["summary"] == "Create contact Ada."
+    assert fake.contacts[-1].email is None
+    stored = repository.get_action(action.id)
+    assert stored is not None
+    assert stored.payload["email"] is None
+
+
+def test_confirm_invoice_applies_reference_and_due_date(api) -> None:
+    """A confirm body can set an invoice reference and due date."""
+    client, fake = api
+    sign_in(client)
+    fake.contacts.append(ContactRecord(name="Bob's Construction"))
+    repository: ActionRepository = client.app.state.services.actions
+    repository.ensure_conversation("chat-1")
+    action = repository.create_action(
+        "chat-1",
+        "create_invoice",
+        {
+            "contact_name": "Bob's Construction",
+            "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}],
+        },
+        "Create an authorised invoice for Bob's Construction for 55.00.",
+    )
+    response = client.post(
+        f"/actions/{action.id}/confirm",
+        json={"reference": " PO-9 ", "due_date": "2026-11-01"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["invoice"]["reference"] == "PO-9"
+    assert body["invoice"]["due_date"] == "2026-11-01"
+    assert body["summary"] == (
+        "Create an authorised invoice for Bob's Construction for 55.00 with reference PO-9 and due 2026-11-01."
+    )
+    stored = repository.get_action(action.id)
+    assert stored is not None
+    assert stored.payload["reference"] == "PO-9"
+    assert stored.payload["due_date"] == "2026-11-01"
+
+
+def test_confirm_cannot_change_required_fields(api) -> None:
+    """Confirm refuses to rewrite required fields such as the contact name."""
+    client, fake = api
+    sign_in(client)
+    repository: ActionRepository = client.app.state.services.actions
+    repository.ensure_conversation("chat-1")
+    contact = repository.create_action("chat-1", "create_contact", {"name": "Ada"}, "Create contact Ada.")
+    response = client.post(
+        f"/actions/{contact.id}/confirm",
+        json={"name": "Other", "email": "ada@example.com"},
+    )
+    assert response.status_code == 422
+    assert response.json()["what"] == "Confirm cannot change required fields"
+    assert fake.write_calls == []
+    stored = repository.get_action(contact.id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.payload == {"name": "Ada"}
+    invoice = repository.create_action(
+        "chat-1",
+        "create_invoice",
+        {
+            "contact_name": "Bob's Construction",
+            "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}],
+        },
+        "Create an authorised invoice for Bob's Construction for 55.00.",
+    )
+    blocked = client.post(f"/actions/{invoice.id}/confirm", json={"contact_name": "Other Co"})
+    assert blocked.status_code == 422
+    assert fake.write_calls == []
+    stored_invoice = repository.get_action(invoice.id)
+    assert stored_invoice is not None
+    assert stored_invoice.status == "pending"
+    assert stored_invoice.payload["contact_name"] == "Bob's Construction"
+
+
+def test_confirm_rejects_an_invalid_due_date(api) -> None:
+    """An invalid due date leaves the proposal pending."""
+    client, fake = api
+    sign_in(client)
+    repository: ActionRepository = client.app.state.services.actions
+    repository.ensure_conversation("chat-1")
+    action = repository.create_action(
+        "chat-1",
+        "create_invoice",
+        {
+            "contact_name": "Bob's Construction",
+            "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}],
+        },
+        "Create an authorised invoice for Bob's Construction for 55.00.",
+    )
+    response = client.post(f"/actions/{action.id}/confirm", json={"due_date": "tomorrow"})
+    assert response.status_code == 422
+    assert fake.write_calls == []
+    stored = repository.get_action(action.id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert "due_date" not in stored.payload
+
+
+def test_system_prompt_asks_for_optional_create_fields() -> None:
+    """The chat agent is told to ask for optional create fields before proposing."""
+    text = SYSTEM_PROMPT.casefold()
+    assert "ask once whether they want an email" in text
+    assert "reference" in text
+    assert "due date" in text
+    assert "14 days" in text
+    assert "skip" in text
 
 
 def test_ui_save_also_refuses_to_create_a_missing_contact(api) -> None:

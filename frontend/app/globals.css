@@ -288,6 +288,19 @@ a.primary {
   white-space: pre-wrap;
 }
 
+.proposal-field input {
+  width: 100%;
+  border: 1px solid #d9d0c0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: white;
+}
+
+.proposal-hint {
+  display: block;
+  margin-top: 4px;
+}
+
 .chat-form input {
   flex: 1;
 }
