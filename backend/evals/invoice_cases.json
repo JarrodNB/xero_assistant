@@ -1,0 +1,46 @@
+[
+  {
+    "id": "unpaid_total",
+    "user": "How much is currently unpaid?",
+    "steps": [
+      {
+        "tool": "summarize_invoices",
+        "args": {}
+      }
+    ],
+    "final_text": "I looked up the unpaid and overdue totals. Nothing was created.",
+    "forbid_phrases": ["successfully created", "has been created", "invoice was created"]
+  },
+  {
+    "id": "overdue_invoices",
+    "user": "Which invoices are overdue?",
+    "steps": [
+      {
+        "tool": "summarize_invoices",
+        "args": {}
+      }
+    ],
+    "final_text": "I checked which authorised invoices are past their due date.",
+    "forbid_phrases": ["successfully created", "has been created", "invoice was created"]
+  },
+  {
+    "id": "bob_construction",
+    "user": "Can you send an invoice to Bob's Construction for $55?",
+    "steps": [
+      {
+        "tool": "find_contacts",
+        "args": {"name": "Bob's Construction"}
+      },
+      {
+        "tool": "propose_action",
+        "args": {
+          "action_type": "create_contact",
+          "payload_json": "{\"name\": \"Bob's Construction\"}"
+        }
+      }
+    ],
+    "expected_action_type": "create_contact",
+    "final_text": "Please confirm creating the contact Bob's Construction. Xero has not been changed.",
+    "forbid_phrases": ["successfully created", "invoice was created", "i created the invoice"]
+  }
+]

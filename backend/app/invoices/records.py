@@ -1,0 +1,80 @@
+"""Purpose: Invoice and contact values shared by Xero, tools, and the UI.
+
+Public API:
+- LineItemRecord
+- InvoiceRecord
+- ContactRecord
+- money
+"""
+
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+
+
+def money(value: Decimal) -> float:
+    """Round a decimal amount to two places and return a float."""
+    return float(value.quantize(Decimal("0.01")))
+
+
+@dataclass(frozen=True)
+class LineItemRecord:
+    """One invoice line the UI and the model can see."""
+
+    description: str
+    quantity: Decimal
+    unit_amount: Decimal
+
+
+@dataclass(frozen=True)
+class ContactRecord:
+    """A contact identified by name, without a Xero id."""
+
+    name: str
+    email: str | None = None
+
+
+@dataclass(frozen=True)
+class InvoiceRecord:
+    """An invoice identified by its invoice number, without a Xero id."""
+
+    invoice_number: str
+    contact_name: str
+    status: str
+    issued_on: date | None
+    due_date: date | None
+    total: Decimal
+    amount_due: Decimal
+    currency: str
+    reference: str | None
+    line_items: tuple[LineItemRecord, ...] = ()
+
+
+def contact_payload(contact: ContactRecord) -> dict[str, object]:
+    """Serialize a contact for JSON responses."""
+    return {"name": contact.name, "email": contact.email}
+
+
+def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False) -> dict[str, object]:
+    """Serialize an invoice for JSON responses."""
+    body: dict[str, object] = {
+        "invoice_number": invoice.invoice_number,
+        "contact_name": invoice.contact_name,
+        "status": invoice.status,
+        "date": invoice.issued_on.isoformat() if invoice.issued_on else None,
+        "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+        "total": money(invoice.total),
+        "amount_due": money(invoice.amount_due),
+        "currency": invoice.currency,
+        "reference": invoice.reference,
+    }
+    if include_lines:
+        body["line_items"] = [
+            {
+                "description": item.description,
+                "quantity": money(item.quantity),
+                "unit_amount": money(item.unit_amount),
+            }
+            for item in invoice.line_items
+        ]
+    return body
