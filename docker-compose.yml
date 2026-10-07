@@ -31,9 +31,16 @@ services:
       - "3000:3000"
     environment:
       BACKEND_URL: http://backend:8000
+      WATCHPACK_POLLING: "1000"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - frontend-next:/app/.next
     depends_on:
       backend:
         condition: service_healthy
 
 volumes:
   assistant-data:
+  frontend-node-modules:
+  frontend-next:

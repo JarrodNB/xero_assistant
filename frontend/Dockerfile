@@ -7,8 +7,8 @@ RUN npm install
 
 COPY . .
 ENV BACKEND_URL=http://backend:8000
-RUN npm run build
+ENV WATCHPACK_POLLING=1000
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]

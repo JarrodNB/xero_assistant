@@ -31,7 +31,8 @@ button {
 .app-shell {
   display: grid;
   grid-template-columns: 220px 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -76,6 +77,10 @@ button {
 
 .main {
   padding: 32px;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -224,15 +229,18 @@ a.primary {
 .chat-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  flex: 1;
+  min-height: 0;
 }
 
 .chat-workspace {
   display: grid;
   grid-template-columns: 240px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .conversation-list {
@@ -273,7 +281,9 @@ a.primary {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -352,6 +362,7 @@ a.primary {
 @media (max-width: 800px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .sidebar {
@@ -373,6 +384,7 @@ a.primary {
 
   .chat-workspace {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .conversation-list {

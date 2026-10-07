@@ -9,7 +9,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { FormEvent, useState } from "react";
+import { FormEvent, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../lib/api";
 import { ProposedAction, StoredMessage } from "../lib/types";
 
@@ -50,6 +50,8 @@ type OptionalField = {
   placeholder?: string;
   hint?: string;
 };
+
+const NEAR_BOTTOM_PX = 48;
 
 const OPTIONAL_FIELDS: Record<string, OptionalField[]> = {
   create_contact: [{ key: "email", label: "Email", inputType: "email", placeholder: "Optional" }],
@@ -246,6 +248,27 @@ function previewSummary(proposal: ProposedAction, values: Record<string, string>
 }
 
 /**
+ * Return the element that actually scrolls the thread, if one does.
+ */
+function scrollParent(start: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = start;
+  while (node) {
+    if (node.scrollHeight - node.clientHeight > 1) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Return whether a scrollable element is already showing its latest content.
+ */
+function isNearBottom(list: HTMLElement): boolean {
+  return list.scrollHeight - list.scrollTop - list.clientHeight <= NEAR_BOTTOM_PX;
+}
+
+/**
  * Return the invoice sentence without optional reference or due date.
  */
 function invoiceAmountSentence(payload: Record<string, unknown>): string | null {
@@ -314,9 +337,32 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, Record<string, string>>>({});
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const listRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
   const busy = status === "submitted" || status === "streaming";
   const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
   const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+    const scroller = scrollParent(list) ?? list;
+    if (followLatest.current) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+
+    /**
+     * Stop following when the reader moves up, and resume near the latest message.
+     */
+    function onScroll() {
+      followLatest.current = isNearBottom(scroller);
+    }
+
+    scroller.addEventListener("scroll", onScroll);
+    return () => scroller.removeEventListener("scroll", onScroll);
+  });
 
   /**
    * Send the typed message.
@@ -327,6 +373,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
     if (!text) {
       return;
     }
+    followLatest.current = true;
     setDraft("");
     try {
       await sendMessage({ text });
@@ -393,6 +440,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
       setStatuses((current) => ({ ...current, [proposal.action_id]: "failed" }));
       narration = `The user confirmed action ${proposal.action_id}, but execution failed: ${message}. Explain the failure in plain language. Do not repeat this message or the action id.`;
     }
+    followLatest.current = true;
     try {
       await sendMessage({ text: narration });
     } catch {
@@ -462,7 +510,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
 
   return (
     <>
-      <div className="messages">
+      <div className="messages" ref={listRef}>
         {visible.map((message) => {
           const streaming = busy && message.id === lastMessageId;
           const texts = (message.parts ?? []).filter((part) => part.type === "text" && part.text);

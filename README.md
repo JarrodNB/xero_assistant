@@ -21,6 +21,8 @@ docker compose up --build
 
 Open http://localhost:3000 and sign in with the username and password you chose. Share that pair with interviewers. Do not share the Xero client secret. The sidebar links to Invoices, Contacts, and Chat. Chat can reopen earlier conversations stored on the server. Contacts lists the demo company's names and emails.
 
+The frontend and backend source trees are mounted into the containers. Saving a file reloads the dev server. Add a Python dependency in `backend/pyproject.toml` and rebuild the backend image. Add an npm dependency in `frontend/package.json`, then run `docker compose run --rm --no-deps frontend npm install`.
+
 ## Tests
 
 ```bash
