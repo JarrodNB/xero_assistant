@@ -41,8 +41,8 @@ export default function LoginPage() {
     <main className="login-page">
       <section className="login-card">
         <h1>Ledger</h1>
-        <p className="muted">Sign in with the username and password you were given.</p>
-        <form onSubmit={onSubmit}>
+        <p className="tagline muted">Sign in with the username and password you were given.</p>
+        <form className="login-form" onSubmit={onSubmit}>
           <label className="field">
             Username
             <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />

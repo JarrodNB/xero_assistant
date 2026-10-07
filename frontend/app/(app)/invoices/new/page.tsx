@@ -59,7 +59,7 @@ export default function NewInvoicePage() {
         <h1>New invoice</h1>
       </div>
       <form
-        className="panel filters"
+        className="panel filters create-contact"
         onSubmit={(event) => {
           event.preventDefault();
           void createContact();

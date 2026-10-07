@@ -14,6 +14,26 @@ import { ApiRequestError, apiRequest } from "../../../../lib/api";
 import { Invoice, LineItem } from "../../../../lib/types";
 
 /**
+ * Map a Xero status onto a pill class.
+ */
+function statusClass(status: string): string {
+  return `status status-${status.toLowerCase()}`;
+}
+
+/**
+ * Show a short label on a status pill.
+ */
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    DRAFT: "Draft",
+    AUTHORISED: "Authorised",
+    PAID: "Paid",
+    VOIDED: "Voided",
+  };
+  return labels[status] ?? status;
+}
+
+/**
  * Load one invoice and save changes or void it.
  */
 export default function EditInvoicePage() {
@@ -84,8 +104,11 @@ export default function EditInvoicePage() {
           Void invoice
         </button>
       </div>
-      <p className="muted">
-        {invoice.status} · {invoice.total.toFixed(2)} {invoice.currency} · {invoice.amount_due.toFixed(2)} due
+      <p className="invoice-meta">
+        <span className={statusClass(invoice.status)}>{statusLabel(invoice.status)}</span>
+        <span className="muted">
+          {invoice.total.toFixed(2)} {invoice.currency} · {invoice.amount_due.toFixed(2)} due
+        </span>
       </p>
       {error ? <p className="error">{error}</p> : null}
       <InvoiceForm

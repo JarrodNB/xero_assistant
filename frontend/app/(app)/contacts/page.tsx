@@ -53,7 +53,7 @@ export default function ContactListPage() {
         </label>
       </div>
       {error ? <p className="error">{error}</p> : null}
-      <div className="panel">
+      <div className="panel table-panel">
         <table>
           <thead>
             <tr>
@@ -64,13 +64,15 @@ export default function ContactListPage() {
           <tbody>
             {contacts.length === 0 ? (
               <tr>
-                <td colSpan={2}>No contacts match this name.</td>
+                <td className="empty" colSpan={2}>
+                  No contacts match this name.
+                </td>
               </tr>
             ) : (
               contacts.map((contact) => (
                 <tr key={`${contact.name}-${contact.email ?? ""}`}>
                   <td>{contact.name}</td>
-                  <td>{contact.email ?? ""}</td>
+                  <td>{contact.email ? contact.email : <span className="muted">No email</span>}</td>
                 </tr>
               ))
             )}

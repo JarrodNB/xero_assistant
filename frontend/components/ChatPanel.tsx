@@ -62,6 +62,16 @@ const OPTIONAL_FIELDS: Record<string, OptionalField[]> = {
 };
 
 /**
+ * Show a short label on a proposal status pill.
+ */
+function statusLabel(status: string): string {
+  if (!status) {
+    return status;
+  }
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+/**
  * Read a proposed action out of a tool result.
  */
 function asProposal(output: unknown): ProposedAction | null {
@@ -493,7 +503,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           </dl>
         ) : null}
         {cardErrors[proposal.action_id] ? <p className="error">{cardErrors[proposal.action_id]}</p> : null}
-        <span className="muted">{actionStatus}</span>
+        <span className={`status status-${actionStatus.toLowerCase()}`}>{statusLabel(actionStatus)}</span>
         {pending ? (
           <div className="actions">
             <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
@@ -521,7 +531,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
                 return proposal ? [proposal] : [];
               });
           return (
-            <div key={message.id}>
+            <div className="message-group" key={message.id}>
               {texts.map((part, index) => (
                 <p className={`bubble ${message.role}`} key={`${message.id}-text-${index}`}>
                   {part.text}

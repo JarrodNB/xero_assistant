@@ -143,7 +143,7 @@ export default function ChatPage() {
       </div>
       {error ? <p className="error">{error}</p> : null}
       <div className="chat-workspace">
-        <div className="conversation-list">
+        <div className="conversation-list panel">
           <button className={draftingNew ? "primary" : "secondary"} type="button" onClick={startNewChat}>
             New chat
           </button>

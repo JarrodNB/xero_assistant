@@ -13,6 +13,26 @@ import { ApiRequestError, apiRequest } from "../../../lib/api";
 import { Invoice } from "../../../lib/types";
 
 /**
+ * Map a Xero status onto a pill class.
+ */
+function statusClass(status: string): string {
+  return `status status-${status.toLowerCase()}`;
+}
+
+/**
+ * Show a short label on a status pill.
+ */
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    DRAFT: "Draft",
+    AUTHORISED: "Authorised",
+    PAID: "Paid",
+    VOIDED: "Voided",
+  };
+  return labels[status] ?? status;
+}
+
+/**
  * Show the demo company's invoices and a short unpaid summary.
  */
 export default function InvoiceListPage() {
@@ -60,16 +80,16 @@ export default function InvoiceListPage() {
         </Link>
       </div>
       <div className="summary-row">
-        <div className="panel">
-          Unpaid
+        <div className="panel summary-card">
+          <span>Unpaid</span>
           <strong>{summary.unpaid_total.toFixed(2)}</strong>
         </div>
-        <div className="panel">
-          Overdue
+        <div className={summary.overdue_total > 0 ? "panel summary-card warning" : "panel summary-card"}>
+          <span>Overdue</span>
           <strong>{summary.overdue_total.toFixed(2)}</strong>
         </div>
-        <div className="panel">
-          Listed total
+        <div className="panel summary-card">
+          <span>Listed total</span>
           <strong>{summary.invoice_total.toFixed(2)}</strong>
         </div>
       </div>
@@ -90,7 +110,7 @@ export default function InvoiceListPage() {
         </label>
       </div>
       {error ? <p className="error">{error}</p> : null}
-      <div className="panel">
+      <div className="panel table-panel">
         <table>
           <thead>
             <tr>
@@ -99,29 +119,35 @@ export default function InvoiceListPage() {
               <th>Status</th>
               <th>Date</th>
               <th>Due</th>
-              <th>Total</th>
-              <th>Due amount</th>
+              <th className="money">Total</th>
+              <th className="money">Due amount</th>
             </tr>
           </thead>
           <tbody>
             {invoices.length === 0 ? (
               <tr>
-                <td colSpan={7}>No invoices match these filters.</td>
+                <td className="empty" colSpan={7}>
+                  No invoices match these filters.
+                </td>
               </tr>
             ) : (
-              invoices.map((invoice) => (
-                <tr key={invoice.invoice_number}>
+              invoices.map((invoice, index) => (
+                <tr key={`${invoice.invoice_number}-${invoice.contact_name}-${invoice.date ?? ""}-${index}`}>
                   <td>
-                    <Link href={`/invoices/${encodeURIComponent(invoice.invoice_number)}`}>{invoice.invoice_number}</Link>
+                    <Link className="table-link" href={`/invoices/${encodeURIComponent(invoice.invoice_number)}`}>
+                      {invoice.invoice_number}
+                    </Link>
                   </td>
                   <td>{invoice.contact_name}</td>
-                  <td>{invoice.status}</td>
+                  <td>
+                    <span className={statusClass(invoice.status)}>{statusLabel(invoice.status)}</span>
+                  </td>
                   <td>{invoice.date}</td>
                   <td>{invoice.due_date}</td>
-                  <td>
+                  <td className="money">
                     {invoice.total.toFixed(2)} {invoice.currency}
                   </td>
-                  <td>{invoice.amount_due.toFixed(2)}</td>
+                  <td className="money">{invoice.amount_due.toFixed(2)}</td>
                 </tr>
               ))
             )}

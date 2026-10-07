@@ -77,67 +77,73 @@ export function InvoiceForm({
   }
 
   return (
-    <form className="panel form-grid" onSubmit={(event) => void submit(event)}>
-      <label className="field">
-        Contact
-        <input value={name} onChange={(event) => setName(event.target.value)} required />
-      </label>
-      <label className="field">
-        Reference
-        <input value={note} onChange={(event) => setNote(event.target.value)} />
-      </label>
-      <label className="field">
-        Due date
-        <input type="date" value={due} onChange={(event) => setDue(event.target.value)} />
-      </label>
-      {lines.map((line, index) => (
-        <div className="line-row" key={index}>
-          <label className="field">
-            Description
-            <input value={line.description} onChange={(event) => updateLine(index, "description", event.target.value)} required />
-          </label>
-          <label className="field">
-            Quantity
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={line.quantity}
-              onChange={(event) => updateLine(index, "quantity", event.target.value)}
-              required
-            />
-          </label>
-          <label className="field">
-            Unit amount
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={line.unit_amount}
-              onChange={(event) => updateLine(index, "unit_amount", event.target.value)}
-              required
-            />
-          </label>
-          <button
-            className="secondary"
-            type="button"
-            onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-      <button
-        className="secondary"
-        type="button"
-        onClick={() => setLines((current) => [...current, { description: "", quantity: 1, unit_amount: 1 }])}
-      >
-        Add line
-      </button>
-      {error ? <p className="error">{error}</p> : null}
-      <button className="primary" type="submit">
-        {submitLabel}
-      </button>
+    <form className="panel invoice-form" onSubmit={(event) => void submit(event)}>
+      <div className="form-grid">
+        <label className="field">
+          Contact
+          <input value={name} onChange={(event) => setName(event.target.value)} required />
+        </label>
+        <label className="field">
+          Reference
+          <input value={note} onChange={(event) => setNote(event.target.value)} />
+        </label>
+        <label className="field">
+          Due date
+          <input type="date" value={due} onChange={(event) => setDue(event.target.value)} />
+        </label>
+      </div>
+      <div className="lines">
+        {lines.map((line, index) => (
+          <div className="line-row" key={index}>
+            <label className="field">
+              Description
+              <input value={line.description} onChange={(event) => updateLine(index, "description", event.target.value)} required />
+            </label>
+            <label className="field">
+              Quantity
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={line.quantity}
+                onChange={(event) => updateLine(index, "quantity", event.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              Unit amount
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={line.unit_amount}
+                onChange={(event) => updateLine(index, "unit_amount", event.target.value)}
+                required
+              />
+            </label>
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="form-footer">
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => setLines((current) => [...current, { description: "", quantity: 1, unit_amount: 1 }])}
+        >
+          Add line
+        </button>
+        {error ? <p className="error">{error}</p> : null}
+        <button className="primary" type="submit">
+          {submitLabel}
+        </button>
+      </div>
     </form>
   );
 }

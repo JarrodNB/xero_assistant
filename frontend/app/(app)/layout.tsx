@@ -57,13 +57,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   if (!ready) {
-    return <p className="main muted">Checking session…</p>;
+    return <p className="loading-screen muted">Checking session…</p>;
   }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <p className="wordmark">Ledger</p>
+        <div className="sidebar-brand">
+          <p className="wordmark">Ledger</p>
+          {xeroConnected && xeroTenantName ? <p className="tenant-label">{xeroTenantName}</p> : null}
+        </div>
         <nav>
           <Link className={pathname.startsWith("/invoices") ? "active" : ""} href="/invoices">
             Invoices
@@ -80,7 +83,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </button>
       </aside>
       <main className="main">
-        {notice ? <p className={notice.startsWith("Connected") ? "muted" : "error"}>{notice}</p> : null}
+        {notice ? <p className={notice.startsWith("Connected") ? "banner banner-ok" : "banner banner-error"}>{notice}</p> : null}
         {xeroConnected ? null : (
           <div className="connect-banner panel">
             <p>Connect the Xero Demo Company before loading invoices.</p>
@@ -89,7 +92,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </a>
           </div>
         )}
-        {xeroConnected && xeroTenantName ? <p className="muted tenant-label">{xeroTenantName}</p> : null}
         {children}
       </main>
     </div>
