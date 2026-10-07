@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     xero_client_secret: str = ""
     xero_redirect_uri: str = "http://localhost:3000/api/xero/callback"
     model: str = "openai:gpt-4.1-mini"
+    chat_summary_every: int = 10
     typesafe_api_key: str = ""
     jev_model: str = "jev-latest"
     langfuse_public_key: str = ""

@@ -43,11 +43,15 @@ class RedactingSpanProcessor:
 
     def on_start(self, span: Any, parent_context: Any = None) -> None:
         """Scrub attributes known at the start of a span."""
+        if not _keep_span(span):
+            return
         _scrub_span(span)
         self._downstream.on_start(span, parent_context)
 
     def _on_ending(self, span: Any) -> None:
         """Scrub credentials while the span is still mutable."""
+        if not _keep_span(span):
+            return
         try:
             _scrub_span(span)
         except Exception:
@@ -58,6 +62,8 @@ class RedactingSpanProcessor:
 
     def on_end(self, span: ReadableSpan) -> None:
         """Forward the finished span after redaction."""
+        if not _keep_span(span):
+            return
         try:
             _scrub_span(span)
         except Exception:
@@ -95,6 +101,15 @@ def configure_observability(settings: Settings) -> None:
     provider.add_span_processor(RedactingSpanProcessor(BatchSpanProcessor(exporter)))
     set_tracer_provider(provider)
     Agent.instrument_all()
+
+
+def _keep_span(span: Any) -> bool:
+    """Drop FastAPI request spans. Jev and model generations stay."""
+    scope = getattr(span, "instrumentation_scope", None)
+    scope_name = str(getattr(scope, "name", "") or "")
+    if scope_name == "fastapi" or scope_name.startswith("opentelemetry.instrumentation.fastapi"):
+        return False
+    return True
 
 
 def _scrub_span(span: Any) -> None:

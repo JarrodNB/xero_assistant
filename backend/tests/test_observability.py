@@ -2,6 +2,7 @@
 
 Public API:
 - test_span_processor_scrubs_before_export
+- test_fastapi_spans_are_not_exported
 - test_redact_value_hides_secrets_and_keeps_invoice_amounts
 """
 
@@ -51,6 +52,62 @@ def test_span_processor_scrubs_before_export() -> None:
     processor = RedactingSpanProcessor(downstream)
     processor._on_ending(FakeSpan())
     assert downstream.ended is True
+
+
+def test_fastapi_spans_are_not_exported() -> None:
+    """HTTP spans from FastAPI never reach the exporter. A generation span does."""
+
+    class Scope:
+        """Name of the library that created a span."""
+
+        def __init__(self, name: str) -> None:
+            """Store the instrumentation scope name."""
+            self.name = name
+
+    class FakeSpan:
+        """Minimal span with a scope and mutable attributes."""
+
+        def __init__(self, scope_name: str) -> None:
+            """Store the scope and one secret attribute."""
+            self.instrumentation_scope = Scope(scope_name)
+            self.attributes = {"authorization": "Bearer secret"}
+            self._attributes = dict(self.attributes)
+
+        def set_attribute(self, key: str, value: object) -> None:
+            """Update both attribute views."""
+            self.attributes[key] = value
+            self._attributes[key] = value
+
+    class Downstream:
+        """Count spans that were forwarded."""
+
+        def __init__(self) -> None:
+            """Start with no forwarded spans."""
+            self.ended: list[str] = []
+
+        def _on_ending(self, span: FakeSpan) -> None:
+            """Record a forwarded span."""
+            self.ended.append(span.instrumentation_scope.name)
+
+        def on_end(self, span: FakeSpan) -> None:
+            """Ignore the later export hook in this test."""
+
+        def on_start(self, span: FakeSpan, parent_context: object = None) -> None:
+            """Ignore span start."""
+
+        def shutdown(self) -> None:
+            """Ignore shutdown."""
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            """Report a successful flush."""
+            return True
+
+    downstream = Downstream()
+    processor = RedactingSpanProcessor(downstream)
+    processor._on_ending(FakeSpan("fastapi"))
+    processor.on_end(FakeSpan("opentelemetry.instrumentation.fastapi"))
+    processor._on_ending(FakeSpan("pydantic-ai"))
+    assert downstream.ended == ["pydantic-ai"]
 
 
 def test_redact_value_hides_secrets_and_keeps_invoice_amounts() -> None:

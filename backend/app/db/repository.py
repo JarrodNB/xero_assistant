@@ -4,6 +4,7 @@ Public API:
 - ActionRepository
 - ConversationSummary
 - StoredAction
+- StoredChatSummary
 - StoredMessage
 """
 
@@ -15,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.schema import ConversationRow, MessageRow, ProposedActionRow, utcnow
+from app.db.schema import ConversationRow, ConversationSummaryRow, MessageRow, ProposedActionRow, utcnow
 
 _PREVIEW_LENGTH = 80
 _NARRATION_PREFIXES = (
@@ -33,6 +34,16 @@ class StoredMessage:
     role: str
     content: str
     created_at: datetime
+
+
+@dataclass
+class StoredChatSummary:
+    """The running summary of older messages in one thread."""
+
+    conversation_id: str
+    summary: str
+    covered_message_count: int
+    updated_at: datetime
 
 
 @dataclass
@@ -118,6 +129,45 @@ class ActionRepository:
                 [_to_stored(row) for row in actions],
             )
 
+    def list_messages(self, conversation_id: str) -> list[StoredMessage]:
+        """Return a conversation's messages in stored order."""
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(MessageRow)
+                .where(MessageRow.conversation_id == conversation_id)
+                .order_by(MessageRow.created_at, MessageRow.id)
+            ).all()
+            return [_to_message(row) for row in rows]
+
+    def get_chat_summary(self, conversation_id: str) -> StoredChatSummary | None:
+        """Return the running summary, or None when this thread has not been summarized."""
+        with self._session_factory() as session:
+            row = session.get(ConversationSummaryRow, conversation_id)
+            if row is None:
+                return None
+            return _to_chat_summary(row)
+
+    def save_chat_summary(self, conversation_id: str, summary: str, covered_message_count: int) -> StoredChatSummary:
+        """Insert or replace the running summary for a conversation."""
+        now = utcnow()
+        with self._session_factory() as session:
+            row = session.get(ConversationSummaryRow, conversation_id)
+            if row is None:
+                row = ConversationSummaryRow(
+                    conversation_id=conversation_id,
+                    summary=summary,
+                    covered_message_count=covered_message_count,
+                    updated_at=now,
+                )
+                session.add(row)
+            else:
+                row.summary = summary
+                row.covered_message_count = covered_message_count
+                row.updated_at = now
+            session.commit()
+            session.refresh(row)
+            return _to_chat_summary(row)
+
     def add_message(self, conversation_id: str, role: str, content: str) -> str:
         """Append a message to a conversation."""
         message_id = str(uuid.uuid4())
@@ -201,6 +251,16 @@ def _preview(content: str) -> str:
     """Shorten a user message for the history list."""
     compact = " ".join(content.split())
     return compact[:_PREVIEW_LENGTH]
+
+
+def _to_chat_summary(row: ConversationSummaryRow) -> StoredChatSummary:
+    """Map a table row into a stored chat summary."""
+    return StoredChatSummary(
+        conversation_id=row.conversation_id,
+        summary=row.summary,
+        covered_message_count=row.covered_message_count,
+        updated_at=row.updated_at,
+    )
 
 
 def _to_message(row: MessageRow) -> StoredMessage:

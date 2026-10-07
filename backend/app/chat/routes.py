@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from app.auth.routes import require_user
 from app.chat.jev import current_jev, screener_for
+from app.chat.summary import current_history_summary, summarize_with_model, update_stored_summary
 from app.db.repository import StoredAction, StoredMessage
 from app.errors import ApiError
 from app.runtime import current_conversation_id, current_services
@@ -136,6 +137,16 @@ async def chat(request: Request) -> Response:
     user_text = latest_user_text(body)
     if user_text:
         services.actions.add_message(conversation_id, "user", user_text)
+    async def summarize(prompt: str) -> str:
+        """Fold one redacted block with the chat model and no tools."""
+        return await summarize_with_model(request.app.state.settings.model, prompt)
+
+    history_summary = await update_stored_summary(
+        services.actions,
+        conversation_id,
+        request.app.state.settings.chat_summary_every,
+        summarize,
+    )
 
     adapter = VercelAIAdapter(agent=request.app.state.agent, run_input=run_input, accept=accept)
 
@@ -150,6 +161,7 @@ async def chat(request: Request) -> Response:
         """Run the agent while the MCP tools can see this conversation."""
         services_token = current_services.set(services)
         conversation_token = current_conversation_id.set(conversation_id)
+        summary_token = current_history_summary.set(history_summary)
         jev_token = current_jev.set(screener_for(request.app.state.settings))
         try:
             event_stream = adapter.run_stream(on_complete=on_complete)
@@ -157,6 +169,7 @@ async def chat(request: Request) -> Response:
                 yield chunk
         finally:
             current_jev.reset(jev_token)
+            current_history_summary.reset(summary_token)
             current_conversation_id.reset(conversation_token)
             current_services.reset(services_token)
 

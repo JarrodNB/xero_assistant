@@ -6,11 +6,13 @@ Public API:
 
 from fastmcp import FastMCP
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
 from app.chat.guardrails import chat_guardrails
 from app.chat.prompt import SYSTEM_PROMPT
+from app.chat.summary import apply_history_summary
 
 
 def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
@@ -19,5 +21,5 @@ def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
         model,
         instructions=SYSTEM_PROMPT,
         toolsets=[MCPToolset(server)],
-        capabilities=chat_guardrails(),
+        capabilities=[*chat_guardrails(), ProcessHistory(apply_history_summary)],
     )

@@ -4,6 +4,7 @@ Public API:
 - Base
 - ConversationRow
 - MessageRow
+- ConversationSummaryRow
 - ProposedActionRow
 - XeroConnectionRow
 - create_engine_for
@@ -12,7 +13,7 @@ Public API:
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, create_engine, event
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -45,6 +46,17 @@ class MessageRow(Base):
     role: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConversationSummaryRow(Base):
+    """The running summary of older messages in one thread."""
+
+    __tablename__ = "conversation_summaries"
+
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), primary_key=True)
+    summary: Mapped[str] = mapped_column(Text)
+    covered_message_count: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class XeroConnectionRow(Base):

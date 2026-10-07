@@ -45,7 +45,16 @@ def create_app(
     mcp_server = build_mcp_server()
     chat_agent = agent or build_chat_agent(resolved.model, mcp_server)
 
-    app = FastAPI(title="Xero Assistant")
+    app = FastAPI(
+        title="Xero Assistant",
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
+    )
     app.state.settings = resolved
     app.state.xero = xero
     app.state.xero_connections = connections
