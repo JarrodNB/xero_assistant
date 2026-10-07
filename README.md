@@ -29,11 +29,15 @@ The frontend and backend source trees are mounted into the containers. Saving a 
 docker compose run --rm --build --no-deps backend pytest
 ```
 
-The golden dataset is `backend/evals/invoice_golden.yaml`. Pytest loads it and runs the deterministic checks with a scripted model. That judge is not the chat guardrail. Jev screens the user message on a live chat turn when `TYPESAFE_API_KEY` is set. To score the dataset with its LLM judge and G-Eval rubric:
+Pytest scores a deterministic dataset and a judge dataset for the orchestrator, and the same pair for the invoices agent. The files are `deterministic.yaml` and `judge.yaml` in `backend/evals/orchestrator/` and `backend/evals/invoices/`. A case can live in one file. Both runs call the configured chat model. Deterministic scoring compares the answer and tool trace with the case expectations. Judge scoring sends the answer to a judge model with that case's rubric. Jev scores live under `backend/evals/jev/`, one package per use. The user-message screen is `user_message/deterministic.yaml`. That score calls the configured Jev model and compares the strict-policy action with the expected action. There is no judge for that screen. The same scores run from:
 
 ```bash
-docker compose run --rm --no-deps backend python -m evals.run_invoice_evals
+docker compose run --rm --no-deps backend python -m evals.orchestrator.run
+docker compose run --rm --no-deps backend python -m evals.invoices.run
+docker compose run --rm --no-deps backend python -m evals.jev.user_message.run
 ```
+
+Jev also screens the user message on a live chat turn when `TYPESAFE_API_KEY` is set. The chat request does not call a judge.
 
 ## Optional traces
 

@@ -16,7 +16,7 @@ Python files in this folder use the module docstring in `backend/AGENTS.md`. Eve
 
 - `actions/` — validate, store, and execute proposed writes
 - `auth/` — the shared interviewer login
-- `chat/` — agent, prompt, guardrails, summary, and chat routes
+- `chat/` — orchestrator, invoices subagent, prompt, guardrails, summary, and chat routes
 - `db/` — SQLite schema and repository
 - `invoices/` — invoice records, the shared gateway, and invoice HTTP routes
 - `mcp_server/` — in-process MCP tools the model may call

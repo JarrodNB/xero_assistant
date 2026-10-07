@@ -1,8 +1,9 @@
 """Purpose: Redact secrets, then screen the user message with Jev before the chat model runs.
 
 Public API:
-- redact_text
 - chat_guardrails
+- redact_text
+- tool_result_guardrail
 """
 
 from collections.abc import Mapping, Sequence
@@ -75,9 +76,14 @@ async def screen_user_message(prompt: str) -> GuardrailResult:
     return GuardrailResult.block(REFUSAL)
 
 
+def tool_result_guardrail() -> ToolGuardrail:
+    """Redact secrets in a tool result before the model reads it."""
+    return ToolGuardrail(result_guard=_redact_tool_result)
+
+
 def chat_guardrails() -> list[object]:
     """Redact secrets, screen the user message with Jev, and redact tool results."""
     return [
         InputGuardrail(guard=[redact_secrets, _PERSONAL_DATA, screen_user_message]),
-        ToolGuardrail(result_guard=_redact_tool_result),
+        tool_result_guardrail(),
     ]

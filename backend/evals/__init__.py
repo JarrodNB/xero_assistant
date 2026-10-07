@@ -1,6 +1,8 @@
-"""Purpose: Invoice evaluation dataset and runner.
+"""Purpose: Deterministic and judge datasets for the orchestrator and the invoices agent, and Jev scores grouped by use.
 
 Public API:
-- evaluators
-- run_invoice_evals
+- checks
+- scoring
+- trace
+- turn
 """

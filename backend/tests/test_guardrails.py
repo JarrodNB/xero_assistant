@@ -14,7 +14,7 @@ from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import OutputGuardrail
 
-from app.chat.agent import build_chat_agent
+from app.chat.orchestrator import build_chat_agent
 from app.chat.guardrails import chat_guardrails, redact_text
 from app.chat.jev import REFUSAL, SUPPORT, current_jev, route
 from app.mcp_server.server import build_mcp_server

@@ -14,4 +14,4 @@ Every folder has an `AGENTS.md`. Python file headers are defined in `backend/AGE
 - `README.md` — how to run the app
 - `ARCHITECTURE.md` — request flow, the write boundary, and summarization
 
-The model may call MCP read tools and `propose_action` only. A Xero write runs after a person confirms that proposal, or when they save or void an invoice in the UI.
+The orchestrator may call `propose_action` and delegate reads to the invoices subagent. That subagent may call `find_contacts`, `find_invoices`, `get_invoice`, `summarize_invoices`, and `compare_invoice_totals`. A Xero write runs after a person confirms a proposal, or when they save or void an invoice in the UI.

@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.actions.routes import router as actions_router
 from app.auth.routes import router as auth_router
-from app.chat.agent import build_chat_agent
+from app.chat.orchestrator import build_chat_agent
 from app.chat.routes import router as chat_router
 from app.config import Settings, get_settings
 from app.db.repository import ActionRepository

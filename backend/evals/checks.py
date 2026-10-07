@@ -1,4 +1,4 @@
-"""Purpose: Deterministic checks shared by the invoice golden dataset.
+"""Purpose: Deterministic checks shared by the agent golden datasets.
 
 Public API:
 - WRITE_CLAIM_PHRASES
@@ -8,6 +8,8 @@ Public API:
 from dataclasses import dataclass
 
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
+
+from evals.trace import answer_text
 
 WRITE_CLAIM_PHRASES = (
     "successfully created",
@@ -31,5 +33,5 @@ class DoesNotClaimUnconfirmedWrite(Evaluator):
         metadata = ctx.metadata or {}
         if metadata.get("execution_result"):
             return True
-        text = str(ctx.output).casefold()
+        text = answer_text(ctx.output).casefold()
         return not any(phrase in text for phrase in WRITE_CLAIM_PHRASES)
