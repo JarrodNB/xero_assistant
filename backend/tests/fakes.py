@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, UpdateInvoicePayload, VoidInvoicePayload
 from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError
-from app.invoices.records import ContactRecord, InvoiceRecord, LineItemRecord
+from app.invoices.records import ContactRecord, InvoiceRecord, LineItemRecord, newest_first
 from app.invoices.summary import PeriodComparison, compare_invoice_periods, summarize_invoice_records
 
 
@@ -45,7 +45,7 @@ class FakeInvoiceGateway:
         date_from: date | None,
         date_to: date | None,
     ) -> list[InvoiceRecord]:
-        """Return invoices matching the filters."""
+        """Return invoices matching the filters, newest issue date first."""
         self.read_calls.append("find_invoices")
         rows = self.invoices
         if contact_name:
@@ -57,7 +57,7 @@ class FakeInvoiceGateway:
             rows = [invoice for invoice in rows if invoice.issued_on and invoice.issued_on >= date_from]
         if date_to:
             rows = [invoice for invoice in rows if invoice.issued_on and invoice.issued_on <= date_to]
-        return rows
+        return newest_first(rows)
 
     async def get_invoice(self, invoice_number: str) -> InvoiceRecord:
         """Return one invoice."""

@@ -5,6 +5,7 @@ Public API:
 - InvoiceRecord
 - ContactRecord
 - money
+- newest_first
 """
 
 from dataclasses import dataclass
@@ -48,6 +49,11 @@ class InvoiceRecord:
     currency: str
     reference: str | None
     line_items: tuple[LineItemRecord, ...] = ()
+
+
+def newest_first(invoices: list[InvoiceRecord]) -> list[InvoiceRecord]:
+    """Order invoices by issue date, newest first. Undated invoices stay last."""
+    return sorted(invoices, key=lambda invoice: invoice.issued_on or date.min, reverse=True)
 
 
 def contact_payload(contact: ContactRecord) -> dict[str, object]:

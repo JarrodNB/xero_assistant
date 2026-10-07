@@ -10,7 +10,7 @@ from typing import Any
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, LineItemPayload, UpdateInvoicePayload, VoidInvoicePayload
 from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError
-from app.invoices.records import ContactRecord, InvoiceRecord
+from app.invoices.records import ContactRecord, InvoiceRecord, newest_first
 from app.invoices.summary import InvoiceSummary, PeriodComparison, compare_invoice_periods, summarize_invoice_records
 from app.xero.client import XeroApiError, XeroClient
 from app.xero.mapping import map_contact, map_invoice
@@ -49,13 +49,13 @@ class XeroInvoiceService:
         date_from: date | None,
         date_to: date | None,
     ) -> list[InvoiceRecord]:
-        """Return invoices matching the filters."""
+        """Return invoices matching the filters, newest issue date first."""
         raw_invoices = await self._fetch_invoices(status, date_from, date_to)
         records = [map_invoice(invoice) for invoice in raw_invoices]
         if contact_name:
             needle = contact_name.casefold()
             records = [invoice for invoice in records if needle in invoice.contact_name.casefold()]
-        return records
+        return newest_first(records)
 
     async def get_invoice(self, invoice_number: str) -> InvoiceRecord:
         """Return one invoice, including its lines."""

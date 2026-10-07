@@ -3,6 +3,7 @@
 Public API:
 - test_unpaid_and_overdue_totals
 - test_period_comparison_ignores_drafts_and_voids
+- test_newest_invoices_come_first
 - test_map_invoice_reads_date_strings
 - test_map_invoice_reads_legacy_dates
 """
@@ -10,7 +11,7 @@ Public API:
 from datetime import date
 from decimal import Decimal
 
-from app.invoices.records import InvoiceRecord
+from app.invoices.records import InvoiceRecord, newest_first
 from app.invoices.summary import compare_invoice_periods, summarize_invoice_records
 from app.xero.mapping import map_invoice
 
@@ -73,6 +74,19 @@ def test_period_comparison_ignores_drafts_and_voids() -> None:
     assert comparison.period_a_total == Decimal("100")
     assert comparison.period_b_total == Decimal("40")
     assert comparison.difference == Decimal("-60")
+
+
+def test_newest_invoices_come_first() -> None:
+    """Issue date descending puts the latest invoice first and undated ones last."""
+    ordered = newest_first(
+        [
+            _invoice("OLD", "AUTHORISED", "10", "10", date(2026, 1, 2), None),
+            _invoice("NONE", "DRAFT", "5", "5", None, None),
+            _invoice("NEW", "PAID", "20", "0", date(2026, 8, 9), None),
+            _invoice("MID", "AUTHORISED", "15", "15", date(2026, 3, 4), None),
+        ]
+    )
+    assert [invoice.invoice_number for invoice in ordered] == ["NEW", "MID", "OLD", "NONE"]
 
 
 def test_map_invoice_reads_date_strings() -> None:
