@@ -347,9 +347,12 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, Record<string, string>>>({});
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [deciding, setDeciding] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
+  const decidingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
+  const locked = busy || deciding;
   const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
   const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
 
@@ -421,47 +424,57 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
    * Confirm or deny one proposal, then ask the assistant to explain the result.
    */
   async function decide(proposal: ProposedAction, decision: "confirm" | "deny") {
+    if (busy || decidingRef.current) {
+      return;
+    }
+    decidingRef.current = true;
+    setDeciding(true);
     const values = valuesFor(proposal);
     let narration: string;
     try {
-      const result = await apiRequest<Record<string, unknown>>(`/api/backend/actions/${proposal.action_id}/${decision}`, {
-        method: "POST",
-        body: decision === "confirm" ? JSON.stringify(confirmOverrides(proposal, values)) : undefined,
-      });
-      setStatuses((current) => ({ ...current, [proposal.action_id]: String(result.status ?? decision) }));
-      setCardErrors((current) => {
-        if (!current[proposal.action_id]) {
-          return current;
+      try {
+        const result = await apiRequest<Record<string, unknown>>(`/api/backend/actions/${proposal.action_id}/${decision}`, {
+          method: "POST",
+          body: decision === "confirm" ? JSON.stringify(confirmOverrides(proposal, values)) : undefined,
+        });
+        setStatuses((current) => ({ ...current, [proposal.action_id]: String(result.status ?? decision) }));
+        setCardErrors((current) => {
+          if (!current[proposal.action_id]) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[proposal.action_id];
+          return next;
+        });
+        narration =
+          decision === "confirm"
+            ? `The user confirmed action ${proposal.action_id}. Execution result: ${JSON.stringify(result)}. Explain what happened in plain language. Do not repeat this message or the action id. Do not propose another action unless the result says another step is required.`
+            : `The user denied action ${proposal.action_id}: ${proposal.summary}. Acknowledge that in plain language and do not repeat this message or the action id. Do not execute it.`;
+      } catch (caught) {
+        const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The action could not be finished.";
+        if (caught instanceof ApiRequestError && caught.statusCode === 422) {
+          setCardErrors((current) => ({ ...current, [proposal.action_id]: message }));
+          return;
         }
-        const next = { ...current };
-        delete next[proposal.action_id];
-        return next;
-      });
-      narration =
-        decision === "confirm"
-          ? `The user confirmed action ${proposal.action_id}. Execution result: ${JSON.stringify(result)}. Explain what happened in plain language. Do not repeat this message or the action id. Do not propose another action unless the result says another step is required.`
-          : `The user denied action ${proposal.action_id}: ${proposal.summary}. Acknowledge that in plain language and do not repeat this message or the action id. Do not execute it.`;
-    } catch (caught) {
-      const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The action could not be finished.";
-      if (caught instanceof ApiRequestError && caught.statusCode === 422) {
-        setCardErrors((current) => ({ ...current, [proposal.action_id]: message }));
-        return;
+        setStatuses((current) => ({ ...current, [proposal.action_id]: "failed" }));
+        narration = `The user confirmed action ${proposal.action_id}, but execution failed: ${message}. Explain the failure in plain language. Do not repeat this message or the action id.`;
       }
-      setStatuses((current) => ({ ...current, [proposal.action_id]: "failed" }));
-      narration = `The user confirmed action ${proposal.action_id}, but execution failed: ${message}. Explain the failure in plain language. Do not repeat this message or the action id.`;
-    }
-    followLatest.current = true;
-    try {
-      await sendMessage({ text: narration });
-    } catch {
-      // The follow-up is for the model. Leave it off the screen if the request fails.
+      followLatest.current = true;
+      try {
+        await sendMessage({ text: narration });
+      } catch {
+        // The follow-up is for the model. Leave it off the screen if the request fails.
+      }
+    } finally {
+      decidingRef.current = false;
+      setDeciding(false);
     }
   }
 
   /**
    * Render one confirmation card.
    */
-  function renderProposal(proposal: ProposedAction) {
+  function renderProposal(proposal: ProposedAction, cardLocked: boolean) {
     const actionStatus = statuses[proposal.action_id] ?? proposal.status;
     const pending = actionStatus === "pending";
     const values = valuesFor(proposal);
@@ -490,6 +503,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
                         value={values[field.key] ?? ""}
                         aria-label={field.label}
                         placeholder={field.placeholder}
+                        disabled={cardLocked}
                         onChange={(event) => setOptionalValue(proposal, field.key, event.target.value)}
                       />
                       {field.hint ? <span className="muted proposal-hint">{field.hint}</span> : null}
@@ -506,10 +520,10 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         <span className={`status status-${actionStatus.toLowerCase()}`}>{statusLabel(actionStatus)}</span>
         {pending ? (
           <div className="actions">
-            <button className="primary" type="button" onClick={() => void decide(proposal, "confirm")}>
+            <button className="primary" type="button" disabled={cardLocked} onClick={() => void decide(proposal, "confirm")}>
               Confirm
             </button>
-            <button className="secondary" type="button" onClick={() => void decide(proposal, "deny")}>
+            <button className="secondary" type="button" disabled={cardLocked} onClick={() => void decide(proposal, "deny")}>
               Deny
             </button>
           </div>
@@ -537,12 +551,12 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
                   {part.text}
                 </p>
               ))}
-              {proposals.map((proposal) => renderProposal(proposal))}
-              {(grouped.byMessageId[message.id] ?? []).map((proposal) => renderProposal(proposal))}
+              {proposals.map((proposal) => renderProposal(proposal, locked))}
+              {(grouped.byMessageId[message.id] ?? []).map((proposal) => renderProposal(proposal, locked))}
             </div>
           );
         })}
-        {grouped.trailing.map((proposal) => renderProposal(proposal))}
+        {grouped.trailing.map((proposal) => renderProposal(proposal, locked))}
       </div>
       <form className="chat-form" onSubmit={(event) => void onSubmit(event)}>
         <input

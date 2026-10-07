@@ -31,7 +31,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
-      router.push("/invoices");
+      router.push("/chat");
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught.message : "Login failed");
     }

@@ -1,5 +1,5 @@
 /**
- * Purpose: Send the front door to the invoice list.
+ * Purpose: Send the front door to chat.
  *
  * Public API:
  * - HomePage
@@ -8,8 +8,8 @@
 import { redirect } from "next/navigation";
 
 /**
- * Open the invoice list, which sends unsigned visitors to login.
+ * Open chat, which sends unsigned visitors to login.
  */
 export default function HomePage() {
-  redirect("/invoices");
+  redirect("/chat");
 }

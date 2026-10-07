@@ -7,7 +7,7 @@ The browser talks only to this Next.js app. `/api/backend` is rewritten to FastA
 ## Files
 
 - `layout.tsx` — root document and metadata
-- `page.tsx` — sends `/` to the invoice list
+- `page.tsx` — sends `/` to chat
 - `globals.css` — shared styles
 - `login/` — interviewer sign-in
 - `(app)/` — signed-in shell, invoices, contacts, and chat
