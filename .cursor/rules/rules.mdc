@@ -70,6 +70,7 @@ alwaysApply: true
     * Architectural decisions should consider both technical quality and ongoing hosting cost.
 
 13. **Every folder should have an Agents.md**
+14. **Do not use the IDE browser for testing, it is too slow, I will test it in the UI locally instead**
 
 ---
 
