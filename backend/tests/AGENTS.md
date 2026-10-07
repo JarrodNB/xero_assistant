@@ -19,3 +19,7 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 - `test_xero_oauth.py` — authorisation-code flow
 - `test_agents.py` — orchestrator delegation and the invoices tool boundary
 - `test_evals.py` — deterministic dataset scores, judge dataset scores, and the Jev user-message score
+
+## Packages
+
+- `guardrails/` — known-phrase screen cases

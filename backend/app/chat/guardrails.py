@@ -1,4 +1,4 @@
-"""Purpose: Redact secrets, then screen the user message with Jev before the chat model runs.
+"""Purpose: Redact secrets, refuse known unsafe phrases, then screen the user message with Jev.
 
 Public API:
 - chat_guardrails
@@ -14,6 +14,7 @@ from pydantic_ai_harness.guardrails import ToolResultInfo
 from pydantic_ai_harness.guardrails.detectors import personal_data, redact_secrets
 
 from app.chat.jev import CHECK_FAILED, REFUSAL, SUPPORT, current_jev
+from app.chat.phrase_screen import screen_known_phrases
 
 _PERSONAL_DATA = personal_data(only=["us_ssn", "credit_card", "iban"])
 
@@ -82,8 +83,10 @@ def tool_result_guardrail() -> ToolGuardrail:
 
 
 def chat_guardrails() -> list[object]:
-    """Redact secrets, screen the user message with Jev, and redact tool results."""
+    """Redact secrets, refuse known phrases, screen with Jev, and redact tool results."""
     return [
-        InputGuardrail(guard=[redact_secrets, _PERSONAL_DATA, screen_user_message]),
+        InputGuardrail(
+            guard=[redact_secrets, _PERSONAL_DATA, screen_known_phrases, screen_user_message]
+        ),
         tool_result_guardrail(),
     ]
