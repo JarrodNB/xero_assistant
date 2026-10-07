@@ -18,7 +18,7 @@ from app.config import Settings
 
 JEV_MODEL = "jev-latest"
 
-REFUSAL = "I can't help with that. Ask me about invoices in the demo company."
+REFUSAL = "I can only help with financial related requests in the demo company. If your message was a request, please rephrase it more clearly."
 SUPPORT = "If you might hurt yourself, call or text 988 in the US. I can only help with invoices."
 CHECK_FAILED = "I couldn't check that message, so I didn't send it."
 
