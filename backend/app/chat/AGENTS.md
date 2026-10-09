@@ -12,5 +12,5 @@ This package runs one chat turn. The orchestrator delegates contact and invoice 
 - `guardrails.py` — secret redaction, the known-phrase screen, and the Jev input screen
 - `phrase_screen.py` — known jailbreak, harm, dosage, and self-harm phrases
 - `jev.py` — Jev client, thresholds, and refusal routes. The user-message cases live in `backend/evals/jev/user_message/`.
-- `summary.py` — fold older messages into the stored summary
+- `summary.py` — fold older messages into one stored summary of at most 2,000 characters
 - `routes.py` — stream a turn and read saved conversations

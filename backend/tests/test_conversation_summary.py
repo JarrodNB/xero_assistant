@@ -3,6 +3,8 @@
 Public API:
 - test_summary_slice_waits_for_a_full_block
 - test_summary_runs_once_per_block_and_redacts_first
+- test_summary_text_stays_within_the_character_budget
+- test_stored_summary_is_capped_before_save
 - test_chat_summary_round_trip
 - test_history_trim_keeps_a_tool_call_with_its_result
 - test_short_history_uses_the_stored_tail
@@ -23,10 +25,14 @@ from pydantic_ai.messages import (
 from sqlalchemy.orm import sessionmaker
 
 from app.chat.summary import (
+    SUMMARY_INSTRUCTIONS,
+    SUMMARY_MAX_CHARACTERS,
     HistorySummary,
     apply_history_summary,
     current_history_summary,
+    limit_summary,
     next_summary_slice,
+    summary_prompt,
     update_stored_summary,
 )
 from app.db.repository import ActionRepository, StoredMessage
@@ -87,6 +93,41 @@ async def test_summary_runs_once_per_block_and_redacts_first(tmp_path) -> None: 
     assert "summary 1" in prompts[1]
     assert third.recent_stored[0].content == "message 20"
     assert repository.get_chat_summary("thread").covered_message_count == 20  # type: ignore[union-attr]
+
+
+def test_summary_text_stays_within_the_character_budget() -> None:
+    """A short summary is kept, and a long one is cut on a sentence or a word."""
+    assert str(SUMMARY_MAX_CHARACTERS) in SUMMARY_INSTRUCTIONS
+    prompt = summary_prompt("", [StoredMessage("1", "thread", "user", "Invoice Ada", _now())])
+    assert str(SUMMARY_MAX_CHARACTERS) in prompt
+    assert limit_summary("Ada owes 55.50.") == "Ada owes 55.50."
+    limited = limit_summary("Ada owes 55.50. " + ("Pending invoice detail. " * 200))
+    assert len(limited) <= SUMMARY_MAX_CHARACTERS
+    assert limited.startswith("Ada owes 55.50.")
+    assert limited.endswith(".")
+    word_cut = limit_summary("Start. " + ("word " * 1000), max_characters=80)
+    assert len(word_cut) <= 80
+    assert word_cut.endswith("word")
+
+
+@pytest.mark.asyncio
+async def test_stored_summary_is_capped_before_save(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The repository stores the trimmed summary, not the model's full reply."""
+    repository = _repository(tmp_path)
+    repository.ensure_conversation("thread")
+    for index in range(20):
+        repository.add_message("thread", "user" if index % 2 == 0 else "assistant", f"message {index}")
+
+    async def summarize(_prompt: str) -> str:
+        """Return a summary longer than the stored budget."""
+        return "Ada owes 55.50. " + ("Pending invoice detail. " * 200)
+
+    await update_stored_summary(repository, "thread", 10, summarize)
+    stored = repository.get_chat_summary("thread")
+    assert stored is not None
+    assert len(stored.summary) <= SUMMARY_MAX_CHARACTERS
+    assert stored.summary.startswith("Ada owes 55.50.")
+    assert stored.covered_message_count == 10
 
 
 def test_chat_summary_round_trip(tmp_path) -> None:  # type: ignore[no-untyped-def]

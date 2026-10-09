@@ -1,9 +1,11 @@
 """Purpose: Fold older chat messages into a stored summary and trim model history.
 
 Public API:
+- SUMMARY_MAX_CHARACTERS
 - HistorySummary
 - apply_history_summary
 - current_history_summary
+- limit_summary
 - next_summary_slice
 - summarize_with_model
 - summary_prompt
@@ -30,14 +32,16 @@ from app.chat.guardrails import redact_text
 from app.db.repository import ActionRepository, StoredMessage
 
 SUMMARY_LEAD = "Summary of the earlier conversation:\n"
+SUMMARY_MAX_CHARACTERS = 2000
 
-SUMMARY_INSTRUCTIONS = """
+SUMMARY_INSTRUCTIONS = f"""
 You update a running summary of one person's conversation with this assistant.
 Summarize the whole conversation. Do not drop a topic because it is outside the subjects you have seen so far.
 
 Keep names, amounts, dates, identifiers, skipped fields, decisions, and whether a proposal is pending, confirmed, or denied.
 Do not claim anything was created, updated, or voided unless the transcript says it was executed.
 Omit small talk. Do not invent facts. Do not repeat action ids.
+Stay within {SUMMARY_MAX_CHARACTERS} characters. Drop the oldest small details first when the summary would exceed that.
 """.strip()
 
 
@@ -63,9 +67,29 @@ def next_summary_slice(message_count: int, covered_count: int, every: int) -> tu
     return covered, covered + every
 
 
+def limit_summary(text: str, max_characters: int = SUMMARY_MAX_CHARACTERS) -> str:
+    """Trim a summary to the character budget, preferring a sentence boundary."""
+    cleaned = text.strip()
+    if max_characters < 1:
+        return ""
+    if len(cleaned) <= max_characters:
+        return cleaned
+    window = cleaned[:max_characters]
+    sentence_end = _last_sentence_end(window)
+    if sentence_end >= max_characters // 2:
+        return window[:sentence_end].rstrip()
+    word_end = window.rfind(" ")
+    if word_end > 0:
+        return window[:word_end].rstrip()
+    return window.rstrip()
+
+
 def summary_prompt(previous: str, messages: list[StoredMessage]) -> str:
     """Build the redacted prompt for one summary update."""
-    lines = ["Update the running summary using the earlier summary and the new messages."]
+    lines = [
+        "Update the running summary using the earlier summary and the new messages.",
+        f"Stay within {SUMMARY_MAX_CHARACTERS} characters.",
+    ]
     if previous.strip():
         lines.append("Earlier summary:")
         lines.append(redact_text(previous))
@@ -101,7 +125,7 @@ async def update_stored_summary(
         if bounds is None:
             break
         start, end = bounds
-        updated = (await summarize(summary_prompt(text, messages[start:end]))).strip()
+        updated = limit_summary((await summarize(summary_prompt(text, messages[start:end]))).strip())
         if not updated:
             break
         text = updated
@@ -123,6 +147,22 @@ def apply_history_summary(messages: list[ModelMessage]) -> list[ModelMessage]:
         return [_summary_message(state.text), *_stored_as_model_messages(state.recent_stored)]
     kept = _keep_recent(messages, len(state.recent_stored))
     return [_summary_message(state.text), *kept]
+
+
+def _last_sentence_end(text: str) -> int:
+    """Return the index after the last sentence end, or -1 when the text has none."""
+    end = -1
+    for index, char in enumerate(text):
+        if char not in ".!?":
+            continue
+        previous = text[index - 1] if index else ""
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if char == "." and previous.isdigit() and following.isdigit():
+            continue
+        if following and not following.isspace():
+            continue
+        end = index + 1
+    return end
 
 
 def _summary_message(text: str) -> ModelRequest:
