@@ -3,11 +3,18 @@
 Public API:
 - test_conversation_history_lists_preview_and_detail
 - test_unknown_conversation_is_not_found
+- test_chat_reply_is_an_unbuffered_event_stream
 """
 
+import os
 import time
+from pathlib import Path
 
-from tests.conftest import sign_in
+from fastapi.testclient import TestClient
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
+
+from tests.conftest import USERNAME, sign_in
 
 
 def test_conversation_history_lists_preview_and_detail(api) -> None:
@@ -64,3 +71,40 @@ def test_unknown_conversation_is_not_found(api) -> None:
     missing = client.get("/conversations/missing")
     assert missing.status_code == 404
     assert missing.json()["what"] == "Conversation does not exist"
+
+
+def test_chat_reply_is_an_unbuffered_event_stream(tmp_path: Path) -> None:
+    """A browser fetch without an SSE Accept header still gets headers a proxy will not buffer."""
+    from app.config import Settings
+    from app.main import create_app
+    from tests.fakes import FakeInvoiceGateway
+
+    settings = Settings(
+        app_username=USERNAME,
+        app_password_hash=os.environ["APP_PASSWORD_HASH"],
+        session_secret="test-session-secret",
+        database_path=str(tmp_path / "app.db"),
+        model="openai:gpt-4.1-mini",
+    )
+    agent = Agent(TestModel(custom_output_text="Hello there."))
+    application = create_app(settings=settings, invoices=FakeInvoiceGateway(), agent=agent)
+    body = {
+        "id": "thread-1",
+        "trigger": "submit-message",
+        "messages": [{"id": "m1", "role": "user", "parts": [{"type": "text", "text": "Hi"}]}],
+    }
+    with TestClient(application) as client:
+        sign_in(client)
+        response = client.post(
+            "/chat",
+            json=body,
+            headers={"Accept": "*/*", "X-Conversation-Id": "thread-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache, no-transform"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.headers["x-vercel-ai-ui-message-stream"] == "v1"
+    assert '"type":"text-delta"' in response.text.replace(" ", "")
+    assert "Hello" in response.text

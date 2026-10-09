@@ -2,6 +2,7 @@
 
 Public API:
 - router
+- STREAM_HEADERS
 - latest_user_text
 """
 
@@ -26,6 +27,12 @@ from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 
 router = APIRouter(tags=["chat"])
+
+STREAM_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1",
+}
 
 
 def _timestamp(value: datetime) -> str:
@@ -192,6 +199,6 @@ async def chat(request: Request) -> Response:
 
     return StreamingResponse(
         encode(),
-        media_type=accept,
-        headers={"X-Conversation-Id": conversation_id},
+        media_type=SSE_CONTENT_TYPE,
+        headers={**STREAM_HEADERS, "X-Conversation-Id": conversation_id},
     )
