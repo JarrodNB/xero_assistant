@@ -39,7 +39,7 @@ def test_start_redirects_to_xero_with_granular_scopes(tmp_path) -> None:
     params = parse_qs(parsed.query)
     assert parsed.netloc == "login.xero.com"
     assert params["client_id"] == ["client-id"]
-    assert params["redirect_uri"] == ["http://localhost:3000/api/xero/callback"]
+    assert params["redirect_uri"] == ["http://localhost:3001/api/xero/callback"]
     assert params["scope"] == [SCOPES]
     assert "accounting.invoices" in params["scope"][0]
     assert "offline_access" in params["scope"][0]
@@ -114,7 +114,7 @@ def _client(tmp_path, http: httpx.AsyncClient) -> TestClient:
         model="openai:gpt-4.1-mini",
         xero_client_id="client-id",
         xero_client_secret="client-secret",
-        xero_redirect_uri="http://localhost:3000/api/xero/callback",
+        xero_redirect_uri="http://localhost:3001/api/xero/callback",
     )
     application = create_app(settings=settings, invoices=FakeInvoiceGateway(), xero_http=http)
     return TestClient(application)

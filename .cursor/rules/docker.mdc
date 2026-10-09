@@ -17,5 +17,5 @@ wsl -d Ubuntu -e bash -lc 'cd /mnt/c/Users/Jarrod/Desktop/xero_assistant && dock
 - `./backend/app`, `./backend/tests`, and `./backend/evals` are mounted. Uvicorn reloads when `app` changes, so those edits do not need a rebuild.
 - `./frontend` is mounted and the container runs `next dev`. Saves reload in the browser. Polling is on because the repo is on the Windows drive. Add npm dependencies in `frontend/package.json`, then run `docker compose run --rm --no-deps frontend npm install`.
 - PowerShell breaks nested quotes. Do not pass `python -c` with quotes through `wsl`. Put a short script under `backend/evals` or `backend/app`, run it with `docker compose run`, then delete it.
-- Start the app with `docker compose up --build` from that same Ubuntu command. The site is http://localhost:3000 and the API is http://localhost:8000.
+- Start the app with `docker compose up --build` from that same Ubuntu command. The site is http://localhost:3001 and the API is http://localhost:8000.
 - Compose loads `.env`. Do not print it, and do not commit it.

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     database_path: str = "/app/data/app.db"
     xero_client_id: str = ""
     xero_client_secret: str = ""
-    xero_redirect_uri: str = "http://localhost:3000/api/xero/callback"
+    xero_redirect_uri: str = "http://localhost:3001/api/xero/callback"
     model: str = "openai:gpt-4.1-mini"
     chat_summary_every: int = 10
     typesafe_api_key: str = ""

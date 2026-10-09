@@ -14,7 +14,7 @@ const backendUrl = process.env.BACKEND_URL ?? "http://backend:8000";
  */
 function browserOrigin(request: NextRequest): string {
   const forwardedHost = request.headers.get("x-forwarded-host");
-  const host = (forwardedHost ?? request.headers.get("host") ?? "localhost:3000").replace(/^0\.0\.0\.0/, "localhost");
+  const host = (forwardedHost ?? request.headers.get("host") ?? "localhost:3001").replace(/^0\.0\.0\.0/, "localhost");
   const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "");
   return `${proto}://${host}`;
 }
