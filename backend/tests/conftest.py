@@ -25,6 +25,16 @@ USERNAME = "interviewer"
 PASSWORD = "interview-secret"
 
 
+@pytest.fixture(autouse=True)
+def _reset_pii_vault():
+    """Drop a personal-data vault left by an earlier test."""
+    from app.chat.guardrails.pii import current_vault
+
+    token = current_vault.set(None)
+    yield
+    current_vault.reset(token)
+
+
 @pytest.fixture
 def api(tmp_path: Path):
     """Return a test client signed against an in-memory invoice gateway."""

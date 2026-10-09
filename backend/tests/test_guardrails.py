@@ -1,7 +1,11 @@
-"""Purpose: Check secret redaction and the Jev input guardrail.
+"""Purpose: Check personal-data placeholders and the Jev input guardrail.
 
 Public API:
 - test_card_number_is_redacted
+- test_reference_label_is_not_treated_as_a_person
+- test_placeholders_are_stable_and_restore
+- test_tool_args_restore_and_delegate_stays_tokenized
+- test_stream_restores_a_split_placeholder
 - test_jev_screens_user_input_only
 - test_blocked_user_message_never_reaches_the_model
 - test_passing_jev_still_redacts_the_card
@@ -9,15 +13,19 @@ Public API:
 - test_secret_is_redacted_before_the_model_sees_it
 """
 
+import json
+
 import pytest
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import OutputGuardrail
+from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
 
 from app.chat.orchestrator import build_chat_agent
 from app.chat.guardrails import chat_guardrails
+from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev, route
-from app.chat.guardrails.redaction import redact_text
+from app.chat.guardrails.redaction import redact_text, tool_result_guardrail
 from app.mcp_server.server import build_mcp_server
 
 CARD = "4111111111111111"
@@ -43,8 +51,85 @@ def test_card_number_is_redacted() -> None:
     """A payment card is replaced before it can be sent to a model."""
     cleaned = redact_text(f"Please use card {CARD}")
     assert CARD not in cleaned
-    assert "[redacted:credit_card]" in cleaned
-    assert redact_text("accounts@example.com") == "accounts@example.com"
+    assert "[redacted_credit_card:1]" in cleaned
+
+
+def test_reference_label_is_not_treated_as_a_person() -> None:
+    """An invoice reference stays readable while a person's name is still protected."""
+    cleaned = PiiVault().protect_text("Reference PO-9. Contact John Smith.")
+    assert "Reference PO-9" in cleaned
+    assert "John Smith" not in cleaned
+    assert "[redacted_person:1]" in cleaned
+
+
+def test_placeholders_are_stable_and_restore() -> None:
+    """An email and a phone become numbered placeholders and restore to the original text."""
+    vault = PiiVault()
+    source = "Contact John Smith at john@example.com or 555-123-4567. Also john@example.com."
+    token = current_vault.set(vault)
+    try:
+        cleaned = redact_text(source)
+    finally:
+        current_vault.reset(token)
+    assert "john@example.com" not in cleaned
+    assert "555-123-4567" not in cleaned
+    assert cleaned.count("[redacted_email:1]") == 2
+    assert "[redacted_phone:1]" in cleaned
+    restored = vault.restore_text(cleaned)
+    assert "john@example.com" in restored
+    assert "555-123-4567" in restored
+    assert "[redacted_email:" not in restored
+    assert "[redacted_phone:" not in restored
+
+
+def test_tool_args_restore_and_delegate_stays_tokenized() -> None:
+    """Read-tool arguments are restored, delegated tasks stay tokenized, and results are protected."""
+    vault = PiiVault()
+    token = current_vault.set(vault)
+    try:
+        protected = vault.protect_text("Contact John Smith at john@example.com")
+        assert "[redacted_person:1]" in protected
+        assert "[redacted_email:1]" in protected
+        rail = tool_result_guardrail()
+        assert rail.guard is not None
+        assert rail.result_guard is not None
+        restored = rail.guard(
+            ToolCallInfo(name="find_contacts", args={"name": "[redacted_person:1]"}, tool_call_id="call-1")
+        )
+        assert restored.action == "replace"
+        assert restored.replacement == {"name": "John Smith"}
+        delegated = rail.guard(
+            ToolCallInfo(name="delegate_task", args={"task": "[redacted_person:1]"}, tool_call_id="call-2")
+        )
+        assert delegated.action == "allow"
+        screened = rail.result_guard(
+            ToolResultInfo(
+                name="find_contacts",
+                args={"name": "John Smith"},
+                tool_call_id="call-3",
+                result={"ok": True, "contacts": [{"name": "John Smith", "email": "john@example.com"}]},
+            )
+        )
+    finally:
+        current_vault.reset(token)
+    assert screened.action == "replace"
+    blob = json.dumps(screened.replacement)
+    assert "John Smith" not in blob
+    assert "john@example.com" not in blob
+    assert "[redacted_person:1]" in blob
+    assert "[redacted_email:1]" in blob
+
+
+def test_stream_restores_a_split_placeholder() -> None:
+    """A placeholder split across two text deltas is restored before it is sent."""
+    vault = PiiVault()
+    vault.protect_text("john@example.com")
+    restorer = OutboundRestorer(vault)
+    first = restorer.push('data: {"type":"text-delta","delta":"[redacted_ema"}\n\n')
+    second = restorer.push('data: {"type":"text-delta","delta":"il:1]"}\n\n')
+    assert first == ""
+    assert "john@example.com" in second
+    assert "[redacted_email:" not in second
 
 
 def test_jev_screens_user_input_only() -> None:
@@ -126,7 +211,7 @@ async def test_passing_jev_still_redacts_the_card() -> None:
     combined = "\n".join(seen)
     assert result.output == "Nothing was created."
     assert CARD not in combined
-    assert "[redacted:credit_card]" in combined
+    assert "[redacted_credit_card:1]" in combined
     assert screener.sides == ["input"]
     assert screener.texts and CARD not in screener.texts[0]
 
@@ -146,8 +231,9 @@ async def test_secret_is_redacted_before_the_model_sees_it() -> None:
     combined = "\n".join(seen)
     assert result.output == "Nothing was created."
     assert CARD not in combined
-    assert "[redacted:credit_card]" in combined
-    assert "accounts@example.com" in combined
+    assert "accounts@example.com" not in combined
+    assert "[redacted_credit_card:1]" in combined
+    assert "[redacted_email:1]" in combined
 
 
 def _message_text(messages) -> list[str]:  # type: ignore[no-untyped-def]

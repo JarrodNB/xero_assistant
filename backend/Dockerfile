@@ -11,7 +11,8 @@ COPY tests ./tests
 COPY evals ./evals
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e ".[dev]"
+    && pip install --no-cache-dir -e ".[dev]" \
+    && python -m spacy download en_core_web_sm
 
 ENV WATCHFILES_FORCE_POLLING=true
 

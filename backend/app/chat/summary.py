@@ -28,6 +28,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model
 
+from app.chat.guardrails.pii import current_vault
 from app.chat.guardrails.redaction import redact_text
 from app.db.repository import ActionRepository, StoredMessage
 
@@ -41,6 +42,7 @@ Summarize the whole conversation. Do not drop a topic because it is outside the 
 Keep names, amounts, dates, identifiers, skipped fields, decisions, and whether a proposal is pending, confirmed, or denied.
 Do not claim anything was created, updated, or voided unless the transcript says it was executed.
 Omit small talk. Do not invent facts. Do not repeat action ids.
+When the transcript uses a token such as [redacted_email:1], copy that token unchanged.
 Stay within {SUMMARY_MAX_CHARACTERS} characters. Drop the oldest small details first when the summary would exceed that.
 """.strip()
 
@@ -126,6 +128,9 @@ async def update_stored_summary(
             break
         start, end = bounds
         updated = limit_summary((await summarize(summary_prompt(text, messages[start:end]))).strip())
+        vault = current_vault.get()
+        if vault is not None and updated:
+            updated = vault.restore_text(updated)
         if not updated:
             break
         text = updated
@@ -165,9 +170,16 @@ def _last_sentence_end(text: str) -> int:
     return end
 
 
+def _for_model(text: str) -> str:
+    """Protect stored text when this turn has a vault, and leave tests that have none unchanged."""
+    if current_vault.get() is None:
+        return text
+    return redact_text(text)
+
+
 def _summary_message(text: str) -> ModelRequest:
     """Build the one message that stands in for older turns."""
-    return ModelRequest(parts=[UserPromptPart(content=f"{SUMMARY_LEAD}{text}")])
+    return ModelRequest(parts=[UserPromptPart(content=f"{SUMMARY_LEAD}{_for_model(text)}")])
 
 
 def _starts_with_summary(messages: list[ModelMessage]) -> bool:
@@ -185,9 +197,9 @@ def _stored_as_model_messages(messages: list[StoredMessage]) -> list[ModelMessag
     converted: list[ModelMessage] = []
     for message in messages:
         if message.role == "assistant":
-            converted.append(ModelResponse(parts=[TextPart(content=message.content)]))
+            converted.append(ModelResponse(parts=[TextPart(content=_for_model(message.content))]))
         else:
-            converted.append(ModelRequest(parts=[UserPromptPart(content=message.content)]))
+            converted.append(ModelRequest(parts=[UserPromptPart(content=_for_model(message.content))]))
     return converted
 
 

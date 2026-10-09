@@ -15,7 +15,9 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.auth.routes import require_user
+from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import current_jev, screener_for
+from app.chat.guardrails.redaction import prepare_run_input
 from app.chat.summary import current_history_summary, summarize_with_model, update_stored_summary
 from app.db.repository import StoredAction, StoredMessage
 from app.errors import ApiError
@@ -137,25 +139,32 @@ async def chat(request: Request) -> Response:
     user_text = latest_user_text(body)
     if user_text:
         services.actions.add_message(conversation_id, "user", user_text)
-    async def summarize(prompt: str) -> str:
-        """Fold one redacted block with the chat model and no tools."""
-        return await summarize_with_model(request.app.state.settings.model, prompt)
+    vault = PiiVault()
+    vault_token = current_vault.set(vault)
+    try:
 
-    history_summary = await update_stored_summary(
-        services.actions,
-        conversation_id,
-        request.app.state.settings.chat_summary_every,
-        summarize,
-    )
+        async def summarize(prompt: str) -> str:
+            """Fold one protected block with the chat model and no tools."""
+            return await summarize_with_model(request.app.state.settings.model, prompt)
+
+        history_summary = await update_stored_summary(
+            services.actions,
+            conversation_id,
+            request.app.state.settings.chat_summary_every,
+            summarize,
+        )
+        prepare_run_input(run_input)
+    finally:
+        current_vault.reset(vault_token)
 
     adapter = VercelAIAdapter(agent=request.app.state.agent, run_input=run_input, accept=accept)
 
     async def on_complete(result) -> None:  # type: ignore[no-untyped-def]
-        """Store the assistant text after a successful run."""
+        """Store the assistant text with personal data restored."""
         output = getattr(result, "output", "")
         text = output if isinstance(output, str) else str(output)
         if text:
-            services.actions.add_message(conversation_id, "assistant", text)
+            services.actions.add_message(conversation_id, "assistant", vault.restore_text(text))
 
     async def encode() -> AsyncIterator[str]:
         """Run the agent while the MCP tools can see this conversation."""
@@ -163,11 +172,19 @@ async def chat(request: Request) -> Response:
         conversation_token = current_conversation_id.set(conversation_id)
         summary_token = current_history_summary.set(history_summary)
         jev_token = current_jev.set(screener_for(request.app.state.settings))
+        stream_vault = current_vault.set(vault)
+        restorer = OutboundRestorer(vault)
         try:
             event_stream = adapter.run_stream(on_complete=on_complete)
             async for chunk in adapter.encode_stream(event_stream):
-                yield chunk
+                restored = restorer.push(chunk)
+                if restored:
+                    yield restored
+            tail = restorer.finish()
+            if tail:
+                yield tail
         finally:
+            current_vault.reset(stream_vault)
             current_jev.reset(jev_token)
             current_history_summary.reset(summary_token)
             current_conversation_id.reset(conversation_token)

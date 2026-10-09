@@ -3,6 +3,8 @@
 Public API:
 - test_summary_slice_waits_for_a_full_block
 - test_summary_runs_once_per_block_and_redacts_first
+- test_summary_restores_placeholders_before_save
+- test_history_summary_is_protected_for_the_model
 - test_summary_text_stays_within_the_character_budget
 - test_stored_summary_is_capped_before_save
 - test_chat_summary_round_trip
@@ -24,6 +26,7 @@ from pydantic_ai.messages import (
 )
 from sqlalchemy.orm import sessionmaker
 
+from app.chat.guardrails.pii import PiiVault, current_vault
 from app.chat.summary import (
     SUMMARY_INSTRUCTIONS,
     SUMMARY_MAX_CHARACTERS,
@@ -71,7 +74,7 @@ async def test_summary_runs_once_per_block_and_redacts_first(tmp_path) -> None: 
     assert first is not None
     assert len(prompts) == 1
     assert CARD not in prompts[0]
-    assert "[redacted:credit_card]" in prompts[0]
+    assert "[redacted_credit_card:1]" in prompts[0]
     assert first.recent_stored[0].content == "message 10"
     stored = repository.get_chat_summary("thread")
     assert stored is not None
@@ -93,6 +96,52 @@ async def test_summary_runs_once_per_block_and_redacts_first(tmp_path) -> None: 
     assert "summary 1" in prompts[1]
     assert third.recent_stored[0].content == "message 20"
     assert repository.get_chat_summary("thread").covered_message_count == 20  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_summary_restores_placeholders_before_save(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The stored summary keeps the original card number, not the placeholder."""
+    repository = _repository(tmp_path)
+    repository.ensure_conversation("thread")
+    for index in range(20):
+        content = f"Use card {CARD}" if index == 3 else f"message {index}"
+        repository.add_message("thread", "user" if index % 2 == 0 else "assistant", content)
+    vault = PiiVault()
+    token = current_vault.set(vault)
+
+    async def summarize(prompt: str) -> str:
+        """Echo the protected prompt so the placeholder can be restored."""
+        return prompt
+
+    try:
+        await update_stored_summary(repository, "thread", 10, summarize)
+    finally:
+        current_vault.reset(token)
+    stored = repository.get_chat_summary("thread")
+    assert stored is not None
+    assert CARD in stored.summary
+    assert "[redacted_credit_card:" not in stored.summary
+
+
+def test_history_summary_is_protected_for_the_model() -> None:
+    """The summary and stored tail sent to the model use placeholders."""
+    vault = PiiVault()
+    token = current_vault.set(vault)
+    recent = [
+        StoredMessage("1", "thread", "user", "Email john@example.com", _now()),
+        StoredMessage("2", "thread", "assistant", "Wrote to john@example.com", _now()),
+    ]
+    state = HistorySummary(text="Earlier john@example.com wrote.", every=10, recent_stored=recent)
+    incoming = [ModelRequest(parts=[UserPromptPart(content="new question")])]
+    summary_token = current_history_summary.set(state)
+    try:
+        trimmed = apply_history_summary(incoming)
+    finally:
+        current_history_summary.reset(summary_token)
+        current_vault.reset(token)
+    visible = "\n".join(_visible_text(trimmed))
+    assert "john@example.com" not in visible
+    assert visible.count("[redacted_email:1]") == 3
 
 
 def test_summary_text_stays_within_the_character_budget() -> None:

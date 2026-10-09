@@ -1,4 +1,4 @@
-"""Purpose: Send agent traces to Langfuse without sending credentials.
+"""Purpose: Send agent traces to Langfuse without credentials or personal data.
 
 Public API:
 - looks_sensitive
@@ -12,9 +12,23 @@ from typing import Any
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
 
+from app.chat.guardrails.pii import PiiVault
+from app.chat.guardrails.redaction import redact_for_trace
 from app.config import Settings
 
 SENSITIVE_KEYS = ("password", "secret", "token", "authorization", "api_key", "credential")
+_CONTENT_MARKERS = (
+    "guardrail.original",
+    "guardrail.replacement",
+    "input.messages",
+    "output.messages",
+    "tool.call.arguments",
+    "tool.call.result",
+    "tool_arguments",
+    "tool_result",
+    "prompt",
+    "completion",
+)
 
 
 def looks_sensitive(key: str, value: object) -> bool:
@@ -117,9 +131,39 @@ def _scrub_span(span: Any) -> None:
     attributes = getattr(span, "attributes", None)
     if not attributes:
         return
+    vault = PiiVault()
     for key, value in list(attributes.items()):
-        if looks_sensitive(str(key), value) and hasattr(span, "set_attribute"):
-            span.set_attribute(key, "[redacted]")
+        cleaned = _scrub_attribute(str(key), value, vault)
+        if cleaned == value:
+            continue
+        if hasattr(span, "set_attribute"):
+            span.set_attribute(key, cleaned)
         private = getattr(span, "_attributes", None)
-        if private is not None and looks_sensitive(str(key), value):
-            private[key] = "[redacted]"
+        if private is not None:
+            private[key] = cleaned
+
+
+def _scrub_attribute(key: str, value: object, vault: PiiVault) -> object:
+    """Hide a credential or personal data inside one span attribute."""
+    if looks_sensitive(key, value):
+        return "[redacted]"
+    if not _carries_prompt_text(key):
+        return value
+    return _scrub_content(value, vault)
+
+
+def _carries_prompt_text(key: str) -> bool:
+    """Return whether this attribute can hold a prompt, tool argument, or tool result."""
+    lowered = key.casefold()
+    return any(marker in lowered for marker in _CONTENT_MARKERS)
+
+
+def _scrub_content(value: object, vault: PiiVault) -> object:
+    """Replace personal data in a string attribute or a sequence of them."""
+    if isinstance(value, str):
+        return redact_for_trace(value, vault)
+    if isinstance(value, tuple):
+        return tuple(_scrub_content(item, vault) for item in value)
+    if isinstance(value, list):
+        return [_scrub_content(item, vault) for item in value]
+    return value
