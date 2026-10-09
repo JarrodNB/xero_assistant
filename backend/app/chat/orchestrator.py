@@ -11,7 +11,8 @@ from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 from pydantic_ai_harness import SubAgent, SubAgents
 
-from app.chat.guardrails import chat_guardrails, tool_result_guardrail
+from app.chat.guardrails import chat_guardrails
+from app.chat.guardrails.redaction import tool_result_guardrail
 from app.chat.invoices_agent import build_invoices_agent
 from app.chat.prompt import SYSTEM_PROMPT
 from app.chat.summary import apply_history_summary

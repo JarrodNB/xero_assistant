@@ -16,9 +16,9 @@ from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import GuardrailResult
 
-from app.chat.jev import REFUSAL, SUPPORT, current_jev
+from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev
 from app.chat.orchestrator import build_chat_agent
-from app.chat.phrase_screen import screen_known_phrases
+from app.chat.guardrails.phrase_screen import screen_known_phrases
 from app.mcp_server.server import build_mcp_server
 
 BENIGN = [

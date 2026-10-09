@@ -9,7 +9,7 @@ Public API:
 
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 
-from app.chat.guardrails import redact_text
+from app.chat.guardrails.redaction import redact_text
 
 TRACE_HEADING = "\nTool trace:\n"
 

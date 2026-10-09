@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_evals import Dataset
 from pydantic_evals.reporting import EvaluationReport
 
-from app.chat.jev import screener_for
+from app.chat.guardrails.policy_screen import screener_for
 from app.config import get_settings
 
 DETERMINISTIC_PATH = Path(__file__).with_name("deterministic.yaml")

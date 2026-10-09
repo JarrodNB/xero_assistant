@@ -15,8 +15,9 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import OutputGuardrail
 
 from app.chat.orchestrator import build_chat_agent
-from app.chat.guardrails import chat_guardrails, redact_text
-from app.chat.jev import REFUSAL, SUPPORT, current_jev, route
+from app.chat.guardrails import chat_guardrails
+from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev, route
+from app.chat.guardrails.redaction import redact_text
 from app.mcp_server.server import build_mcp_server
 
 CARD = "4111111111111111"

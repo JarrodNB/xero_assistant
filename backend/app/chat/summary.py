@@ -28,7 +28,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model
 
-from app.chat.guardrails import redact_text
+from app.chat.guardrails.redaction import redact_text
 from app.db.repository import ActionRepository, StoredMessage
 
 SUMMARY_LEAD = "Summary of the earlier conversation:\n"

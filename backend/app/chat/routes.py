@@ -15,7 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.auth.routes import require_user
-from app.chat.jev import current_jev, screener_for
+from app.chat.guardrails.policy_screen import current_jev, screener_for
 from app.chat.summary import current_history_summary, summarize_with_model, update_stored_summary
 from app.db.repository import StoredAction, StoredMessage
 from app.errors import ApiError

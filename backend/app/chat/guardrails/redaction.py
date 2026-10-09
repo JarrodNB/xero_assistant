@@ -1,7 +1,7 @@
-"""Purpose: Redact secrets, refuse known unsafe phrases, then screen the user message with Jev.
+"""Purpose: Redact secrets and payment details before a model reads them.
 
 Public API:
-- chat_guardrails
+- PERSONAL_DATA
 - redact_text
 - tool_result_guardrail
 """
@@ -9,20 +9,17 @@ Public API:
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pydantic_ai_harness import GuardrailResult, InputGuardrail, ToolGuardrail
+from pydantic_ai_harness import GuardrailResult, ToolGuardrail
 from pydantic_ai_harness.guardrails import ToolResultInfo
 from pydantic_ai_harness.guardrails.detectors import personal_data, redact_secrets
 
-from app.chat.jev import CHECK_FAILED, REFUSAL, SUPPORT, current_jev
-from app.chat.phrase_screen import screen_known_phrases
-
-_PERSONAL_DATA = personal_data(only=["us_ssn", "credit_card", "iban"])
+PERSONAL_DATA = personal_data(only=["us_ssn", "credit_card", "iban"])
 
 
 def redact_text(value: str) -> str:
     """Remove secrets, card numbers, SSNs, and IBANs from text."""
     cleaned = value
-    for detector in (redact_secrets, _PERSONAL_DATA):
+    for detector in (redact_secrets, PERSONAL_DATA):
         verdict = detector(cleaned)
         if verdict.action == "replace" and isinstance(verdict.replacement, str):
             cleaned = verdict.replacement
@@ -61,32 +58,6 @@ def _redact_tool_result(info: ToolResultInfo) -> GuardrailResult:
     return GuardrailResult.allow()
 
 
-async def screen_user_message(prompt: str) -> GuardrailResult:
-    """Ask Jev about the user message. The assistant reply is not screened."""
-    screener = current_jev.get()
-    if screener is None or not prompt.strip():
-        return GuardrailResult.allow()
-    try:
-        action = await screener.guard(prompt, "input")
-    except Exception:
-        return GuardrailResult.block(CHECK_FAILED)
-    if action == "pass":
-        return GuardrailResult.allow()
-    if action == "support":
-        return GuardrailResult.block(SUPPORT)
-    return GuardrailResult.block(REFUSAL)
-
-
 def tool_result_guardrail() -> ToolGuardrail:
     """Redact secrets in a tool result before the model reads it."""
     return ToolGuardrail(result_guard=_redact_tool_result)
-
-
-def chat_guardrails() -> list[object]:
-    """Redact secrets, refuse known phrases, screen with Jev, and redact tool results."""
-    return [
-        InputGuardrail(
-            guard=[redact_secrets, _PERSONAL_DATA, screen_known_phrases, screen_user_message]
-        ),
-        tool_result_guardrail(),
-    ]

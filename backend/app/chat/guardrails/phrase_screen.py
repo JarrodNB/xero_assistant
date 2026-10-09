@@ -8,7 +8,7 @@ import re
 
 from pydantic_ai_harness import GuardrailResult
 
-from app.chat.jev import REFUSAL, SUPPORT
+from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT
 
 _JAILBREAK = (
     re.compile(

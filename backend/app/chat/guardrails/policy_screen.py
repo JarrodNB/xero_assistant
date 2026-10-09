@@ -1,10 +1,14 @@
-"""Purpose: Screen the user message with the Jev decision model before the chat model runs.
+"""Purpose: Apply the strict input policy to the user message before the chat model runs.
 
 Public API:
+- CHECK_FAILED
 - INPUT_BATTERY
 - POLICIES
+- REFUSAL
+- SUPPORT
 - current_jev
 - route
+- screen_user_message
 - screener_for
 - TypeSafeJevScreener
 """
@@ -12,6 +16,7 @@ Public API:
 from contextvars import ContextVar
 from typing import Protocol
 
+from pydantic_ai_harness import GuardrailResult
 from typesafe_sdk import AsyncTypeSafeClient, Noul, NoulCriteria, Score
 
 from app.config import Settings
@@ -20,7 +25,7 @@ JEV_MODEL = "jev-latest"
 
 REFUSAL = "I can only help with financial related requests in the demo company. If your message was a request, please rephrase it more clearly."
 SUPPORT = "If you might hurt yourself, call or text 988 in the US. I can only help with invoices."
-CHECK_FAILED = "I couldn't check that message, so I didn't send it."
+CHECK_FAILED = "Something went wrong before I could answer. Please try again."
 
 
 def _noul(instructions: str, yes: str, no: str) -> Noul:
@@ -129,3 +134,19 @@ def screener_for(settings: Settings) -> JevScreener | None:
     if not settings.typesafe_api_key:
         return None
     return TypeSafeJevScreener(settings.typesafe_api_key, settings.jev_model or JEV_MODEL)
+
+
+async def screen_user_message(prompt: str) -> GuardrailResult:
+    """Ask Jev about the user message. The assistant reply is not screened."""
+    screener = current_jev.get()
+    if screener is None or not prompt.strip():
+        return GuardrailResult.allow()
+    try:
+        action = await screener.guard(prompt, "input")
+    except Exception:
+        return GuardrailResult.block(CHECK_FAILED)
+    if action == "pass":
+        return GuardrailResult.allow()
+    if action == "support":
+        return GuardrailResult.block(SUPPORT)
+    return GuardrailResult.block(REFUSAL)
