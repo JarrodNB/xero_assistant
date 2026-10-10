@@ -38,7 +38,8 @@ ENTITY_LABELS = {
 }
 
 _PLACEHOLDER = re.compile(r"\[redacted_[a-z0-9_]+:\d+\]")
-_PARTIAL_TAIL = re.compile(r"\[(?:redacted(?:_[a-z0-9_]*)?(?::\d*)?)?$")
+_PLACEHOLDER_PREFIX = "[redacted_"
+_PLACEHOLDER_LABEL = re.compile(r"[a-z0-9_]*")
 _FIELD_LABEL = re.compile(r"\b(?:reference|invoice|inv-\d+|po-\d+)\b", re.IGNORECASE)
 _LETTERS = re.compile(r"[^\W\d_]+", re.UNICODE)
 _MASK = "\ue000{index}\ue001"
@@ -350,10 +351,32 @@ def _delta_field(payload: dict[str, Any]) -> str | None:
 
 def _split_hold(text: str) -> tuple[str, str]:
     """Split a trailing unfinished placeholder off text that is safe to restore."""
-    match = _PARTIAL_TAIL.search(text)
-    if match is None:
+    start = text.rfind("[")
+    if start < 0:
         return text, ""
-    return text[: match.start()], match.group(0)
+    candidate = text[start:]
+    if not _is_placeholder_prefix(candidate):
+        return text, ""
+    return text[:start], candidate
+
+
+def _is_placeholder_prefix(value: str) -> bool:
+    """Return whether text can become a placeholder when more characters arrive."""
+    if _PLACEHOLDER.fullmatch(value):
+        return False
+    if len(value) <= len(_PLACEHOLDER_PREFIX):
+        return _PLACEHOLDER_PREFIX.startswith(value)
+    if not value.startswith(_PLACEHOLDER_PREFIX):
+        return False
+    remainder = value[len(_PLACEHOLDER_PREFIX) :]
+    if ":" not in remainder:
+        return _PLACEHOLDER_LABEL.fullmatch(remainder) is not None
+    label, digits = remainder.split(":", 1)
+    return (
+        bool(label)
+        and _PLACEHOLDER_LABEL.fullmatch(label) is not None
+        and (not digits or digits.isdigit())
+    )
 
 
 def _next_event(pending: str) -> tuple[str | None, str | None]:

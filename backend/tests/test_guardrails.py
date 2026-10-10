@@ -6,6 +6,8 @@ Public API:
 - test_placeholders_are_stable_and_restore
 - test_tool_args_restore_and_delegate_stays_tokenized
 - test_stream_restores_a_split_placeholder
+- test_stream_restores_placeholder_at_every_split
+- test_stream_flushes_an_unfinished_placeholder
 - test_jev_screens_user_input_only
 - test_blocked_user_message_never_reaches_the_model
 - test_passing_jev_still_redacts_the_card
@@ -132,6 +134,29 @@ def test_stream_restores_a_split_placeholder() -> None:
     assert "[redacted_email:" not in second
 
 
+def test_stream_restores_placeholder_at_every_split() -> None:
+    """Every character boundary in a placeholder is safe across text deltas."""
+    token = "[redacted_email:1]"
+    for split_at in range(1, len(token)):
+        vault = PiiVault()
+        vault.protect_text("john@example.com")
+        restorer = OutboundRestorer(vault)
+        first = restorer.push(
+            "data: " + json.dumps({"type": "text-delta", "delta": f"Email {token[:split_at]}"}) + "\n\n"
+        )
+        second = restorer.push(
+            "data: " + json.dumps({"type": "text-delta", "delta": f"{token[split_at:]} now"}) + "\n\n"
+        )
+        assert "".join(_streamed_deltas(first + second)) == "Email john@example.com now"
+
+
+def test_stream_flushes_an_unfinished_placeholder() -> None:
+    """An incomplete token is preserved rather than lost when the stream ends."""
+    restorer = OutboundRestorer(PiiVault())
+    pushed = restorer.push('data: {"type":"text-delta","delta":"Keep [red"}\n\n')
+    assert "".join(_streamed_deltas(pushed + restorer.finish())) == "Keep [red"
+
+
 def test_jev_screens_user_input_only() -> None:
     """The chat guardrail list has no output judge."""
     guards = chat_guardrails()
@@ -247,3 +272,16 @@ def _message_text(messages) -> list[str]:  # type: ignore[no-untyped-def]
             elif isinstance(content, list):
                 texts.extend(str(item) for item in content)
     return texts
+
+
+def _streamed_deltas(events: str) -> list[str]:
+    """Read text delta values from an encoded SSE fragment."""
+    deltas: list[str] = []
+    for event in events.split("\n\n"):
+        if not event.startswith("data: "):
+            continue
+        payload = json.loads(event.removeprefix("data: "))
+        delta = payload.get("delta")
+        if isinstance(delta, str):
+            deltas.append(delta)
+    return deltas
