@@ -9,6 +9,8 @@ Public API:
 - test_stream_restores_placeholder_at_every_split
 - test_stream_flushes_an_unfinished_placeholder
 - test_guardrail_context_is_bounded_and_formatted
+- test_guardrail_context_uses_newest_first_character_budget
+- test_guardrail_input_preparation_protects_prompt_and_history
 - test_guardrail_context_reset_preserves_no_context_behavior
 - test_jev_screens_user_input_only
 - test_blocked_user_message_never_reaches_the_model
@@ -30,8 +32,10 @@ from app.chat.guardrails import chat_guardrails
 from app.chat.guardrails.context import (
     GuardrailContext,
     GuardrailMessage,
+    MAX_CONTEXT_CHARACTERS,
     current_guardrail_context,
     format_guardrail_input,
+    prepare_guardrail_input,
 )
 from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev, route
@@ -39,6 +43,7 @@ from app.chat.guardrails.redaction import redact_text, tool_result_guardrail
 from app.mcp_server.server import build_mcp_server
 
 CARD = "4111111111111111"
+API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"
 
 
 class _ScriptedJev:
@@ -180,9 +185,51 @@ def test_guardrail_context_is_bounded_and_formatted() -> None:
     finally:
         current_guardrail_context.reset(token)
     assert "oldest message" not in formatted
+    assert "Classify the latest user message." in formatted
+    assert "Use the prior messages only to resolve references" in formatted
+    assert "adopts, requests, agrees to, or continues hazardous content" in formatted
     assert "user: Create the oversized invoice." in formatted
     assert "assistant: The maximum is 999999999999.99." in formatted
     assert formatted.endswith("Latest user message:\nUse the maximum amount you just said.")
+
+
+def test_guardrail_context_uses_newest_first_character_budget() -> None:
+    """The newest message consumes the history budget before an older message."""
+    newest = "n" * 3000
+    older = "o" * 3000
+    context = GuardrailContext.from_messages(
+        [
+            GuardrailMessage(role="user", content="dropped by message-count bound"),
+            GuardrailMessage(role="user", content=older),
+            GuardrailMessage(role="assistant", content=newest),
+        ]
+    )
+    assert [len(message.content) for message in context.messages] == [1000, 3000]
+    assert context.messages[0].content == older[:1000]
+    assert context.messages[1].content == newest
+    assert sum(len(message.content) for message in context.messages) == MAX_CONTEXT_CHARACTERS
+
+
+def test_guardrail_input_preparation_protects_prompt_and_history() -> None:
+    """The shared production-and-eval preparation protects both sides with one vault."""
+    vault_token = current_vault.set(PiiVault())
+    try:
+        prepared = prepare_guardrail_input(
+            f"Email current@example.com, use card {CARD}, and use key {API_KEY}.",
+            [GuardrailMessage(role="assistant", content="Previously email prior@example.com.")],
+        )
+    finally:
+        current_vault.reset(vault_token)
+    combined = prepared.prompt + "\n" + "\n".join(
+        message.content for message in prepared.context.messages
+    )
+    assert "current@example.com" not in combined
+    assert "prior@example.com" not in combined
+    assert CARD not in combined
+    assert API_KEY not in combined
+    assert "[redacted_email:1]" in prepared.prompt
+    assert "[redacted_email:2]" in combined
+    assert "[redacted_credit_card:1]" in prepared.prompt
 
 
 def test_guardrail_context_reset_preserves_no_context_behavior() -> None:

@@ -6,6 +6,7 @@ Public API:
 - test_invoices_deterministic_dataset
 - test_invoices_judge_dataset
 - test_jev_user_message_case_names_stay_stable
+- test_jev_user_message_eval_protects_prompt_and_history
 - test_jev_user_message_dataset
 - test_orchestrator_case_names_stay_stable
 - test_orchestrator_deterministic_dataset
@@ -19,11 +20,19 @@ import pytest
 from pydantic_evals.evaluators import EqualsExpected, EvaluatorContext, GEval, LLMJudge
 from pydantic_evals.otel.span_tree import SpanTree
 
+from app.chat.guardrails.context import current_guardrail_context
+from app.chat.guardrails.pii import current_vault
 from app.config import get_settings
 from evals.checks import DoesNotClaimUnconfirmedWrite
 from evals.invoices.evaluators import ExpectedRead
 from evals.invoices.run import evaluate_invoices_dataset, load_invoices_dataset
-from evals.jev.user_message.run import evaluate_user_message_dataset, load_user_message_dataset
+from evals.jev.user_message.run import (
+    EvaluationMessage,
+    UserMessageInput,
+    evaluate_user_message_dataset,
+    load_user_message_dataset,
+    screen_user_message_input,
+)
 from evals.orchestrator.evaluators import ExpectedDelegate
 from evals.orchestrator.run import evaluate_orchestrator_dataset, load_orchestrator_dataset
 from evals.trace import TRACE_HEADING
@@ -91,7 +100,23 @@ JEV_USER_MESSAGE_CASES = (
     "dosage",
     "self_harm",
     "invoice_maximum_follow_up",
+    "hazardous_history_safe_follow_up",
+    "hazardous_history_adopted",
 )
+
+
+class _RecordingJev:
+    """Allow one evaluation input while recording its provider-facing state."""
+
+    def __init__(self) -> None:
+        """Start without provider-facing text."""
+        self.text = ""
+
+    async def guard(self, text: str, side: str) -> str:
+        """Record the input-side text and allow it."""
+        assert side == "input"
+        self.text = text
+        return "pass"
 
 
 def test_datasets_keep_their_own_checks() -> None:
@@ -141,6 +166,26 @@ def test_jev_user_message_case_names_stay_stable() -> None:
     dataset = load_user_message_dataset()
     assert dataset.name == "user_message"
     assert tuple(case.name for case in dataset.cases) == JEV_USER_MESSAGE_CASES
+
+
+@pytest.mark.asyncio
+async def test_jev_user_message_eval_protects_prompt_and_history() -> None:
+    """The eval sends only protected prompt and history text to its Jev provider."""
+    screener = _RecordingJev()
+    case = UserMessageInput(
+        prompt="Use current@example.com with sk-abcdefghijklmnopqrstuvwxyz123456.",
+        previous_messages=[
+            EvaluationMessage(role="assistant", content="Earlier contact was prior@example.com.")
+        ],
+    )
+    result = await screen_user_message_input(screener, case)
+    assert result == "pass"
+    assert "current@example.com" not in screener.text
+    assert "prior@example.com" not in screener.text
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in screener.text
+    assert "[redacted_email:" in screener.text
+    assert current_vault.get() is None
+    assert current_guardrail_context.get() is None
 
 
 def test_unconfirmed_write_claim_evaluator() -> None:

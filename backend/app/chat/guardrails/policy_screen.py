@@ -3,6 +3,7 @@
 Public API:
 - CHECK_FAILED
 - INPUT_BATTERY
+- JevScreener
 - POLICIES
 - REFUSAL
 - SUPPORT

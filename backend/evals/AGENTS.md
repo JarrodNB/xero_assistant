@@ -2,7 +2,7 @@
 
 Python files here use the module docstring in `backend/AGENTS.md`. Every function and method has a one-line docstring.
 
-The orchestrator and the invoices agent each have a deterministic dataset and a judge dataset. The two files can hold different cases. Both runs call the configured chat model. Deterministic scoring compares the answer and tool trace with the case expectations. Judge scoring sends the answer to a judge model with that case's rubric. Jev scores are grouped by use under `jev/`. The user-message screen is the one scored use so far. That run calls the configured Jev model and compares the strict-policy action with the expected action. A chat request does none of these.
+The orchestrator and the invoices agent each have a deterministic dataset and a judge dataset. The two files can hold different cases. Both runs call the configured chat model. Deterministic scoring compares the answer and tool trace with the case expectations. Judge scoring sends the answer to a judge model with that case's rubric. Jev scores are grouped by use under `jev/`. The user-message screen is the one scored use so far. Its inputs may include bounded prior messages, and its runner uses the production PII/secret protection and context formatter before calling Jev. That run compares the strict-policy action with the expected action. A chat request does none of these.
 
 ```bash
 python -m evals.orchestrator.run

@@ -16,10 +16,10 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.auth.routes import require_user
-from app.chat.guardrails.context import GuardrailContext, GuardrailMessage, current_guardrail_context
+from app.chat.guardrails.context import GuardrailMessage, current_guardrail_context, prepare_guardrail_input
 from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import current_jev, screener_for
-from app.chat.guardrails.redaction import prepare_run_input, redact_text
+from app.chat.guardrails.redaction import prepare_run_input
 from app.chat.summary import current_history_summary, summarize_with_model, update_stored_summary
 from app.db.repository import StoredAction, StoredMessage
 from app.errors import ApiError
@@ -166,16 +166,17 @@ async def chat(request: Request) -> Response:
             request.app.state.settings.chat_summary_every,
             summarize,
         )
-        prepare_run_input(run_input)
-        guardrail_context = GuardrailContext.from_messages(
+        prepared_guardrail_input = prepare_guardrail_input(
+            user_text,
             [
                 GuardrailMessage(
                     role="assistant" if message.role == "assistant" else "user",
-                    content=redact_text(message.content),
+                    content=message.content,
                 )
                 for message in previous_messages
-            ]
+            ],
         )
+        prepare_run_input(run_input)
     finally:
         current_vault.reset(vault_token)
 
@@ -193,7 +194,7 @@ async def chat(request: Request) -> Response:
         services_token = current_services.set(services)
         conversation_token = current_conversation_id.set(conversation_id)
         summary_token = current_history_summary.set(history_summary)
-        guardrail_context_token = current_guardrail_context.set(guardrail_context)
+        guardrail_context_token = current_guardrail_context.set(prepared_guardrail_input.context)
         jev_token = current_jev.set(screener_for(request.app.state.settings))
         stream_vault = current_vault.set(vault)
         restorer = OutboundRestorer(vault)

@@ -36,11 +36,9 @@ def redact_for_trace(value: str, vault: PiiVault | None = None) -> str:
 
 def protect_prompt(prompt: str) -> GuardrailResult:
     """Replace personal data in the latest user prompt before later checks see it."""
-    vault = current_vault.get()
-    if vault is None:
-        vault = PiiVault()
-        current_vault.set(vault)
-    protected = _without_secrets(vault.protect_text(prompt))
+    if current_vault.get() is None:
+        current_vault.set(PiiVault())
+    protected = redact_text(prompt)
     if protected == prompt:
         return GuardrailResult.allow()
     return GuardrailResult.replace(protected)
@@ -54,7 +52,7 @@ def prepare_run_input(run_input: object) -> None:
 
     def rewrite(text: str) -> str:
         """Protect one string with the turn vault."""
-        return _without_secrets(vault.protect_text(text))
+        return redact_text(text)
 
     rewrite_run_input(run_input, rewrite)
 
