@@ -2,26 +2,49 @@
 
 Public API:
 - DETERMINISTIC_PATH
+- EvaluationMessage
+- UserMessageInput
 - evaluate_user_message_dataset
 - load_user_message_dataset
 """
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, Field
 from pydantic_evals import Dataset
 from pydantic_evals.reporting import EvaluationReport
 
+from app.chat.guardrails.context import (
+    GuardrailContext,
+    GuardrailMessage,
+    current_guardrail_context,
+    format_guardrail_input,
+)
 from app.chat.guardrails.policy_screen import screener_for
 from app.config import get_settings
 
 DETERMINISTIC_PATH = Path(__file__).with_name("deterministic.yaml")
 
 
-def load_user_message_dataset() -> Dataset:
+class EvaluationMessage(BaseModel):
+    """One preceding message in a user-message evaluation case."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class UserMessageInput(BaseModel):
+    """The latest prompt and optional preceding conversation messages for Jev."""
+
+    prompt: str
+    previous_messages: list[EvaluationMessage] = Field(default_factory=list)
+
+
+def load_user_message_dataset() -> Dataset[UserMessageInput, str, Any]:
     """Load the user-message cases and their expected actions."""
-    return Dataset[str, str, Any].from_file(DETERMINISTIC_PATH)
+    return Dataset[UserMessageInput, str, Any].from_file(DETERMINISTIC_PATH)
 
 
 async def evaluate_user_message_dataset() -> EvaluationReport:
@@ -31,9 +54,17 @@ async def evaluate_user_message_dataset() -> EvaluationReport:
         raise RuntimeError("TYPESAFE_API_KEY is required to score the user-message dataset.")
     dataset = load_user_message_dataset()
 
-    async def answer(prompt: str) -> str:
-        """Return the strict-policy action for one user message."""
-        return await screener.guard(prompt, "input")
+    async def answer(raw_input: object) -> str:
+        """Return the strict-policy action for one typed user-message case."""
+        case = UserMessageInput.model_validate(raw_input)
+        context = GuardrailContext.from_messages(
+            [GuardrailMessage(role=message.role, content=message.content) for message in case.previous_messages]
+        )
+        token = current_guardrail_context.set(context)
+        try:
+            return await screener.guard(format_guardrail_input(case.prompt), "input")
+        finally:
+            current_guardrail_context.reset(token)
 
     return await dataset.evaluate(answer)
 

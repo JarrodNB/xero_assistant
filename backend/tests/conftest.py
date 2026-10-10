@@ -27,12 +27,15 @@ PASSWORD = "interview-secret"
 
 @pytest.fixture(autouse=True)
 def _reset_pii_vault():
-    """Drop a personal-data vault left by an earlier test."""
+    """Drop request-scoped guardrail state left by an earlier test."""
+    from app.chat.guardrails.context import current_guardrail_context
     from app.chat.guardrails.pii import current_vault
 
-    token = current_vault.set(None)
+    context_token = current_guardrail_context.set(None)
+    vault_token = current_vault.set(None)
     yield
-    current_vault.reset(token)
+    current_vault.reset(vault_token)
+    current_guardrail_context.reset(context_token)
 
 
 @pytest.fixture

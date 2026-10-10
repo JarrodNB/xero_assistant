@@ -11,7 +11,7 @@ copy .env.example .env
 docker compose run --rm --no-deps backend python -m app.auth.hash_password --password "choose-a-password"
 ```
 
-Put the printed hash in `.env` as `APP_PASSWORD_HASH`. Docker Compose treats `$` as a variable, so write each `$` in the hash as `$$`. Also set `APP_USERNAME`, `SESSION_SECRET`, `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, and `OPENAI_API_KEY`. Set `TYPESAFE_API_KEY` to screen each user message with the Jev model before the chat model runs. Jev does not grade the assistant reply. `CHAT_SUMMARY_EVERY` defaults to 10. After every further block of that many messages, older turns are folded into one summary of at most 2,000 characters that the model reuses. The chat screen still shows the full thread. Set it to 0 to turn summarization off.
+Put the printed hash in `.env` as `APP_PASSWORD_HASH`. Docker Compose treats `$` as a variable, so write each `$` in the hash as `$$`. Also set `APP_USERNAME`, `SESSION_SECRET`, `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, and `OPENAI_API_KEY`. Set `TYPESAFE_API_KEY` to screen each user message with the Jev model before the chat model runs. Jev receives the latest prompt plus at most the two immediately preceding user or assistant messages from that conversation, after personal data and secrets are protected. It does not grade the assistant reply. `CHAT_SUMMARY_EVERY` defaults to 10. After every further block of that many messages, older turns are folded into one summary of at most 2,000 characters that the model reuses. The chat screen still shows the full thread. Set it to 0 to turn summarization off.
 
 Create a [Xero web app](https://developer.xero.com/documentation/guides/oauth2/auth-flow) and set its redirect URI to `http://localhost:3001/api/xero/callback`. Put the client id and client secret in `.env`. After you sign in, choose Connect Xero and authorise the Demo Company. The server stores that refresh token and reuses it for every interviewer. The connection is free for up to 25 organisations.
 
@@ -37,7 +37,7 @@ docker compose run --rm --no-deps backend python -m evals.invoices.run
 docker compose run --rm --no-deps backend python -m evals.jev.user_message.run
 ```
 
-Jev also screens the user message on a live chat turn when `TYPESAFE_API_KEY` is set. The chat request does not call a judge.
+Jev also screens the protected latest user message with its bounded two-message conversation tail on a live chat turn when `TYPESAFE_API_KEY` is set. The chat request does not call a judge.
 
 ## Optional traces
 

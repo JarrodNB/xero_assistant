@@ -19,6 +19,7 @@ from typing import Protocol
 from pydantic_ai_harness import GuardrailResult
 from typesafe_sdk import AsyncTypeSafeClient, Noul, NoulCriteria, Score
 
+from app.chat.guardrails.context import format_guardrail_input
 from app.config import Settings
 
 JEV_MODEL = "jev-latest"
@@ -137,12 +138,12 @@ def screener_for(settings: Settings) -> JevScreener | None:
 
 
 async def screen_user_message(prompt: str) -> GuardrailResult:
-    """Ask Jev about the user message. The assistant reply is not screened."""
+    """Ask Jev about the user message with its bounded conversation context."""
     screener = current_jev.get()
     if screener is None or not prompt.strip():
         return GuardrailResult.allow()
     try:
-        action = await screener.guard(prompt, "input")
+        action = await screener.guard(format_guardrail_input(prompt), "input")
     except Exception:
         return GuardrailResult.block(CHECK_FAILED)
     if action == "pass":

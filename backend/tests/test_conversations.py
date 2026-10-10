@@ -4,6 +4,7 @@ Public API:
 - test_conversation_history_lists_preview_and_detail
 - test_unknown_conversation_is_not_found
 - test_chat_reply_is_an_unbuffered_event_stream
+- test_chat_jev_context_is_redacted_bounded_and_isolated
 """
 
 import os
@@ -12,9 +13,27 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from pydantic_ai import Agent
+from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
+from app.chat.orchestrator import build_chat_agent
+from app.mcp_server.server import build_mcp_server
 from tests.conftest import USERNAME, sign_in
+
+
+class _RecordingJev:
+    """Pass each prompt while recording the exact protected text Jev would receive."""
+
+    def __init__(self) -> None:
+        """Start with no recorded prompts."""
+        self.texts: list[str] = []
+
+    async def guard(self, text: str, side: str) -> str:
+        """Record one input-side screen and allow it."""
+        assert side == "input"
+        self.texts.append(text)
+        return "pass"
 
 
 def test_conversation_history_lists_preview_and_detail(api) -> None:
@@ -108,3 +127,62 @@ def test_chat_reply_is_an_unbuffered_event_stream(tmp_path: Path) -> None:
     assert response.headers["x-vercel-ai-ui-message-stream"] == "v1"
     assert '"type":"text-delta"' in response.text.replace(" ", "")
     assert "Hello" in response.text
+
+
+def test_chat_jev_context_is_redacted_bounded_and_isolated(api, monkeypatch) -> None:
+    """Each request exposes only its protected two-message tail to Jev."""
+    client, _fake = api
+    sign_in(client)
+    repository = client.app.state.services.actions
+    repository.ensure_conversation("thread-with-history")
+    repository.add_message("thread-with-history", "user", "This oldest message must be dropped.")
+    repository.add_message(
+        "thread-with-history",
+        "user",
+        "Create an invoice for accounts@example.com for 1000000000000.",
+    )
+    repository.add_message(
+        "thread-with-history",
+        "assistant",
+        "The maximum amount is 999999999999.99.",
+    )
+    recorder = _RecordingJev()
+    monkeypatch.setattr("app.chat.routes.screener_for", lambda _settings: recorder)
+
+    def respond(_messages, _info):  # type: ignore[no-untyped-def]
+        """Return a deterministic response after the guardrail passes."""
+        return ModelResponse(parts=[TextPart(content="Okay.")])
+
+    client.app.state.agent = build_chat_agent(FunctionModel(respond), build_mcp_server())
+
+    first = client.post(
+        "/chat",
+        json=_chat_body("Use the maximum amount you just said."),
+        headers={"X-Conversation-Id": "thread-with-history"},
+    )
+    second = client.post(
+        "/chat",
+        json=_chat_body("How much is unpaid?"),
+        headers={"X-Conversation-Id": "separate-thread"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(recorder.texts) == 2
+    contextual = recorder.texts[0]
+    assert "This oldest message must be dropped." not in contextual
+    assert "accounts@example.com" not in contextual
+    assert "[redacted_email:1]" in contextual
+    assert "999999999999.99" not in contextual
+    assert "assistant: The maximum amount is [redacted_bank_account:" in contextual
+    assert contextual.endswith("Latest user message:\nUse the maximum amount you just said.")
+    assert recorder.texts[1] == "How much is unpaid?"
+
+
+def _chat_body(prompt: str) -> dict[str, object]:
+    """Build one minimal Vercel AI chat request."""
+    return {
+        "id": "message-1",
+        "trigger": "submit-message",
+        "messages": [{"id": "message-1", "role": "user", "parts": [{"type": "text", "text": prompt}]}],
+    }

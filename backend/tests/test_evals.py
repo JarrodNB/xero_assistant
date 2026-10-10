@@ -90,6 +90,7 @@ JEV_USER_MESSAGE_CASES = (
     "physical_harm",
     "dosage",
     "self_harm",
+    "invoice_maximum_follow_up",
 )
 
 

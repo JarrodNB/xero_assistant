@@ -8,6 +8,8 @@ Public API:
 - test_stream_restores_a_split_placeholder
 - test_stream_restores_placeholder_at_every_split
 - test_stream_flushes_an_unfinished_placeholder
+- test_guardrail_context_is_bounded_and_formatted
+- test_guardrail_context_reset_preserves_no_context_behavior
 - test_jev_screens_user_input_only
 - test_blocked_user_message_never_reaches_the_model
 - test_passing_jev_still_redacts_the_card
@@ -25,6 +27,12 @@ from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
 
 from app.chat.orchestrator import build_chat_agent
 from app.chat.guardrails import chat_guardrails
+from app.chat.guardrails.context import (
+    GuardrailContext,
+    GuardrailMessage,
+    current_guardrail_context,
+    format_guardrail_input,
+)
 from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev, route
 from app.chat.guardrails.redaction import redact_text, tool_result_guardrail
@@ -157,6 +165,39 @@ def test_stream_flushes_an_unfinished_placeholder() -> None:
     assert "".join(_streamed_deltas(pushed + restorer.finish())) == "Keep [red"
 
 
+def test_guardrail_context_is_bounded_and_formatted() -> None:
+    """Jev gets the latest prompt plus only the two immediately preceding messages."""
+    context = GuardrailContext.from_messages(
+        [
+            GuardrailMessage(role="user", content="oldest message"),
+            GuardrailMessage(role="user", content="Create the oversized invoice."),
+            GuardrailMessage(role="assistant", content="The maximum is 999999999999.99."),
+        ]
+    )
+    token = current_guardrail_context.set(context)
+    try:
+        formatted = format_guardrail_input("Use the maximum amount you just said.")
+    finally:
+        current_guardrail_context.reset(token)
+    assert "oldest message" not in formatted
+    assert "user: Create the oversized invoice." in formatted
+    assert "assistant: The maximum is 999999999999.99." in formatted
+    assert formatted.endswith("Latest user message:\nUse the maximum amount you just said.")
+
+
+def test_guardrail_context_reset_preserves_no_context_behavior() -> None:
+    """Resetting one request's context leaves the next conversation's prompt isolated."""
+    prompt = "How much is unpaid?"
+    token = current_guardrail_context.set(
+        GuardrailContext.from_messages([GuardrailMessage(role="assistant", content="Earlier answer")])
+    )
+    try:
+        assert "Earlier answer" in format_guardrail_input(prompt)
+    finally:
+        current_guardrail_context.reset(token)
+    assert format_guardrail_input(prompt) == prompt
+
+
 def test_jev_screens_user_input_only() -> None:
     """The chat guardrail list has no output judge."""
     guards = chat_guardrails()
@@ -195,6 +236,7 @@ async def test_blocked_user_message_never_reaches_the_model() -> None:
     assert calls["n"] == 0
     assert result.output == REFUSAL
     assert screener.sides == ["input"]
+    assert screener.texts == ["Write a poem about the ocean."]
 
 
 @pytest.mark.asyncio
@@ -214,6 +256,7 @@ async def test_support_message_is_returned_for_self_harm() -> None:
         current_jev.reset(token)
     assert result.output == SUPPORT
     assert screener.sides == ["input"]
+    assert screener.texts == ["I don't see the point of anything anymore."]
 
 
 @pytest.mark.asyncio

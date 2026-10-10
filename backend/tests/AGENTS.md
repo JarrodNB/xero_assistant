@@ -10,9 +10,9 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 - `fakes.py` — in-memory invoice gateway
 - `test_auth.py` — shared login and session
 - `test_actions.py` — payload validation and the confirm write boundary
-- `test_conversations.py` — stored chat history
+- `test_conversations.py` — stored chat history and request-scoped Jev context
 - `test_conversation_summary.py` — summary folding and history trim
-- `test_guardrails.py` — redaction and the Jev input screen
+- `test_guardrails.py` — redaction, bounded Jev context, and the Jev input screen
 - `test_observability.py` — trace redaction
 - `test_mcp_tools.py` — the tool list has reads and `propose_action` only
 - `test_mapping_and_summary.py` — Xero mapping and invoice totals
