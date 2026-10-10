@@ -6,12 +6,14 @@ Public API:
 - test_newest_invoices_come_first
 - test_map_invoice_reads_date_strings
 - test_map_invoice_reads_legacy_dates
+- test_money_serialization_handles_large_decimals
+- test_invoice_payload_preserves_four_decimal_quantity
 """
 
 from datetime import date
 from decimal import Decimal
 
-from app.invoices.records import InvoiceRecord, newest_first
+from app.invoices.records import InvoiceRecord, LineItemRecord, invoice_payload, money, newest_first
 from app.invoices.summary import compare_invoice_periods, summarize_invoice_records
 from app.xero.mapping import map_invoice
 
@@ -120,3 +122,28 @@ def test_map_invoice_reads_legacy_dates() -> None:
     invoice = map_invoice({"Date": "/Date(1756684800000+0000)/", "DueDate": "/Date(1757894400000+0000)/"})
     assert invoice.issued_on == date(2025, 9, 1)
     assert invoice.due_date == date(2025, 9, 15)
+
+
+def test_money_serialization_handles_large_decimals() -> None:
+    """A large but supported amount can be rounded without Decimal context overflow."""
+    assert money(Decimal("999999999999.999")) == 1_000_000_000_000.0
+
+
+def test_invoice_payload_preserves_four_decimal_quantity() -> None:
+    """Invoice responses retain quantities that use the supported four decimal places."""
+    invoice = _invoice("INV-1", "AUTHORISED", "0.01", "0.01", date(2026, 10, 10), None)
+    invoice = InvoiceRecord(
+        invoice_number=invoice.invoice_number,
+        contact_name=invoice.contact_name,
+        status=invoice.status,
+        issued_on=invoice.issued_on,
+        due_date=invoice.due_date,
+        total=invoice.total,
+        amount_due=invoice.amount_due,
+        currency=invoice.currency,
+        reference=invoice.reference,
+        line_items=(LineItemRecord("Usage", Decimal("0.0001"), Decimal("55.00")),),
+    )
+    assert invoice_payload(invoice, include_lines=True)["line_items"] == [
+        {"description": "Usage", "quantity": 0.0001, "unit_amount": 55.0}
+    ]

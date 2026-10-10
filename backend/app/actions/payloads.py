@@ -1,6 +1,10 @@
 """Purpose: Validate write payloads before they are stored or executed.
 
 Public API:
+- MAX_LINE_ITEMS
+- MAX_QUANTITY
+- MAX_UNIT_AMOUNT
+- MAX_INVOICE_SUBTOTAL
 - CreateContactPayload
 - LineItemPayload
 - CreateInvoicePayload
@@ -12,14 +16,27 @@ Public API:
 """
 
 from datetime import date, timedelta
-from typing import Any, Literal
+from decimal import Decimal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.errors import ApiError
 
 ActionType = Literal["create_contact", "create_invoice", "update_invoice", "void_invoice"]
 ACTION_TYPES = ("create_contact", "create_invoice", "update_invoice", "void_invoice")
+MAX_LINE_ITEMS = 100
+MAX_QUANTITY = Decimal("99999999.9999")
+MAX_UNIT_AMOUNT = Decimal("999999999999.99")
+MAX_INVOICE_SUBTOTAL = Decimal("999999999999.99")
+Quantity = Annotated[
+    Decimal,
+    Field(gt=0, le=MAX_QUANTITY, max_digits=12, decimal_places=4, allow_inf_nan=False),
+]
+UnitAmount = Annotated[
+    Decimal,
+    Field(gt=0, le=MAX_UNIT_AMOUNT, max_digits=14, decimal_places=2, allow_inf_nan=False),
+]
 OPTIONAL_CONFIRM_FIELDS: dict[str, tuple[str, ...]] = {
     "create_contact": ("email",),
     "create_invoice": ("reference", "due_date"),
@@ -30,8 +47,8 @@ class LineItemPayload(BaseModel):
     """One sales line on a proposed invoice."""
 
     description: str = Field(min_length=1, max_length=4000)
-    quantity: float = Field(gt=0)
-    unit_amount: float = Field(gt=0)
+    quantity: Quantity
+    unit_amount: UnitAmount
 
 
 class CreateContactPayload(BaseModel):
@@ -45,7 +62,7 @@ class CreateInvoicePayload(BaseModel):
     """Fields required to create an authorised sales invoice."""
 
     contact_name: str = Field(min_length=1, max_length=255)
-    line_items: list[LineItemPayload] = Field(min_length=1)
+    line_items: list[LineItemPayload] = Field(min_length=1, max_length=MAX_LINE_ITEMS)
     reference: str | None = Field(default=None, max_length=255)
     due_date: date | None = None
 
@@ -53,13 +70,19 @@ class CreateInvoicePayload(BaseModel):
         """Return the requested due date, or 14 days from today."""
         return self.due_date or today + timedelta(days=14)
 
+    @model_validator(mode="after")
+    def subtotal_is_safe(self) -> Self:
+        """Reject an invoice whose exact pre-tax total exceeds the application limit."""
+        _validate_subtotal(self.line_items)
+        return self
+
 
 class UpdateInvoicePayload(BaseModel):
     """Fields that may change on an existing invoice."""
 
     invoice_number: str = Field(min_length=1, max_length=50)
     contact_name: str | None = Field(default=None, max_length=255)
-    line_items: list[LineItemPayload] | None = None
+    line_items: list[LineItemPayload] | None = Field(default=None, min_length=1, max_length=MAX_LINE_ITEMS)
     reference: str | None = Field(default=None, max_length=255)
     due_date: date | None = None
 
@@ -69,6 +92,13 @@ class UpdateInvoicePayload(BaseModel):
             value is not None
             for value in (self.contact_name, self.line_items, self.reference, self.due_date)
         )
+
+    @model_validator(mode="after")
+    def subtotal_is_safe(self) -> Self:
+        """Reject replacement lines whose exact pre-tax total exceeds the application limit."""
+        if self.line_items is not None:
+            _validate_subtotal(self.line_items)
+        return self
 
 
 class VoidInvoicePayload(BaseModel):
@@ -101,7 +131,7 @@ def parse_action(action_type: str, payload: dict[str, Any]) -> CreateContactPayl
             "Action payload is invalid",
             error.errors()[0]["msg"],
             False,
-            "Correct the payload fields and propose the action again.",
+            _validation_next_step(action_type),
         ) from error
     if isinstance(parsed, UpdateInvoicePayload) and not parsed.has_change():
         raise ApiError(
@@ -170,3 +200,21 @@ def _blank_to_none(value: Any) -> Any:
         stripped = value.strip()
         return stripped or None
     return value
+
+
+def _validation_next_step(action_type: str) -> str:
+    """Return action-specific guidance after payload validation fails."""
+    if action_type in ("create_invoice", "update_invoice"):
+        return (
+            "Correct the invalid field. Use at most 100 lines, quantity from 0.0001 to 99999999.9999 with up to "
+            "four decimal places, unit amount from 0.01 to 999999999999.99 with up to two decimal places, and a "
+            "subtotal at most 999999999999.99; then propose the action again."
+        )
+    return "Correct the invalid payload field and propose the action again."
+
+
+def _validate_subtotal(line_items: list[LineItemPayload]) -> None:
+    """Reject an exact line-item subtotal above the safe invoice limit."""
+    subtotal = sum((item.quantity * item.unit_amount for item in line_items), Decimal("0"))
+    if subtotal > MAX_INVOICE_SUBTOTAL:
+        raise ValueError(f"invoice subtotal must be at most {MAX_INVOICE_SUBTOTAL}")

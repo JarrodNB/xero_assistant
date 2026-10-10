@@ -66,6 +66,12 @@ cases:
     execution_result: false
     expect_delegate: invoices
     expect_propose: false
+- name: oversized_chat_amount
+  inputs: Create an invoice for Bob's Construction for 1000000000000. Reference PO-10. Due date 2026-10-21.
+  metadata:
+    execution_result: false
+    expect_delegate: none
+    expect_propose: false
 evaluators:
 - IsInstance: str
 - DoesNotClaimUnconfirmedWrite

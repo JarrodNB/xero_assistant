@@ -10,12 +10,21 @@ Public API:
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 
 def money(value: Decimal) -> float:
     """Round a decimal amount to two places and return a float."""
-    return float(value.quantize(Decimal("0.01")))
+    return _decimal_number(value, 2)
+
+
+def _decimal_number(value: Decimal, decimal_places: int) -> float:
+    """Round a decimal to the requested places without context overflow."""
+    integer_digits = max(value.adjusted() + 1, 1) if value.is_finite() else 1
+    with localcontext() as context:
+        context.prec = max(integer_digits + decimal_places, 28)
+        quantum = Decimal(1).scaleb(-decimal_places)
+        return float(value.quantize(quantum))
 
 
 @dataclass(frozen=True)
@@ -78,7 +87,7 @@ def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False) -> dict
         body["line_items"] = [
             {
                 "description": item.description,
-                "quantity": money(item.quantity),
+                "quantity": _decimal_number(item.quantity, 4),
                 "unit_amount": money(item.unit_amount),
             }
             for item in invoice.line_items

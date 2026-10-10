@@ -9,6 +9,12 @@
 
 import { FormEvent, useState } from "react";
 import { ApiRequestError } from "../lib/api";
+import {
+  MAX_INVOICE_LINES,
+  MAX_QUANTITY,
+  MAX_UNIT_AMOUNT,
+  validateInvoiceLines,
+} from "../lib/invoiceLimits";
 import { LineItem } from "../lib/types";
 
 type InvoiceFormProps = {
@@ -48,6 +54,11 @@ export function InvoiceForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    const validationError = validateInvoiceLines(lines);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     try {
       await onSubmit({ contactName: name, reference: note, dueDate: due, lineItems: lines });
     } catch (caught) {
@@ -103,8 +114,9 @@ export function InvoiceForm({
               Quantity
               <input
                 type="number"
-                min="0.01"
-                step="0.01"
+                min="0.0001"
+                max={MAX_QUANTITY}
+                step="0.0001"
                 value={line.quantity}
                 onChange={(event) => updateLine(index, "quantity", event.target.value)}
                 required
@@ -115,6 +127,7 @@ export function InvoiceForm({
               <input
                 type="number"
                 min="0.01"
+                max={MAX_UNIT_AMOUNT}
                 step="0.01"
                 value={line.unit_amount}
                 onChange={(event) => updateLine(index, "unit_amount", event.target.value)}
@@ -136,6 +149,7 @@ export function InvoiceForm({
           className="secondary"
           type="button"
           onClick={() => setLines((current) => [...current, { description: "", quantity: 1, unit_amount: 1 }])}
+          disabled={lines.length >= MAX_INVOICE_LINES}
         >
           Add line
         </button>

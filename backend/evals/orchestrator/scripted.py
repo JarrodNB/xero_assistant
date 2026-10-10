@@ -43,7 +43,7 @@ def _parent_turn(user: str, called: list[str]) -> ModelResponse:
 
 def _should_delegate(user: str) -> bool:
     """Return whether this user message needs an invoices lookup."""
-    if _is_refusal(user) or _is_finished(user) or "skip" in user.casefold():
+    if _is_refusal(user) or _is_finished(user) or _is_oversized(user) or "skip" in user.casefold():
         return False
     folded = user.casefold()
     return any(
@@ -68,6 +68,8 @@ def _invoice_payload(user: str) -> dict[str, object]:
 def _should_propose(user: str) -> bool:
     """Return whether the orchestrator should store a create_invoice proposal."""
     folded = user.casefold()
+    if _is_oversized(user):
+        return False
     if "skip" in folded and "bob" in folded:
         return True
     if "not given" in folded or "have not" in folded:
@@ -86,6 +88,11 @@ def _is_finished(user: str) -> bool:
     return "denied action" in folded or "status executed" in folded
 
 
+def _is_oversized(user: str) -> bool:
+    """Return whether the scripted request uses the numeric regression value."""
+    return "1000000000000" in user
+
+
 def _parent_answer(user: str) -> str:
     """Return the orchestrator's final text for one scripted case."""
     folded = user.casefold()
@@ -95,6 +102,8 @@ def _parent_answer(user: str) -> str:
         return "That action was denied and was not executed."
     if "status executed" in folded:
         return "The invoice for Bob's Construction for $55 was created as INV-1001."
+    if _is_oversized(user):
+        return "The maximum unit amount and invoice subtotal are 999999999999.99. Please provide a smaller value."
     if _should_propose(user):
         return "I proposed an invoice to Bob's Construction for $55. Nothing was created until you confirm."
     if "bob" in folded:

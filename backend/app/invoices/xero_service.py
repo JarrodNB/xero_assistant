@@ -331,8 +331,8 @@ def _line_item(item: LineItemPayload, account_code: str, tax_type: str) -> dict[
     """Build one Xero line item."""
     return {
         "Description": item.description,
-        "Quantity": item.quantity,
-        "UnitAmount": item.unit_amount,
+        "Quantity": format(item.quantity, "f"),
+        "UnitAmount": format(item.unit_amount, "f"),
         "AccountCode": account_code,
         "TaxType": tax_type,
     }

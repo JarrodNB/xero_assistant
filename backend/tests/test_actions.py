@@ -2,6 +2,10 @@
 
 Public API:
 - test_create_invoice_requires_a_line
+- test_invoice_numbers_are_exact_and_bounded
+- test_invoice_subtotal_and_line_count_are_bounded
+- test_non_invoice_validation_uses_general_recovery_guidance
+- test_invoice_api_rejects_non_finite_numbers
 - test_missing_contact_does_not_create_one_in_xero
 - test_confirm_missing_contact_does_not_write
 - test_confirm_and_deny_are_separate
@@ -23,13 +27,13 @@ import httpx
 import pytest
 
 from app.actions.executor import execute_action
-from app.actions.payloads import parse_action
+from app.actions.payloads import MAX_INVOICE_SUBTOTAL, CreateInvoicePayload, parse_action
 from app.chat.prompt import SYSTEM_PROMPT
 from app.db.repository import ActionRepository
 from app.db.schema import create_engine_for
 from app.errors import ApiError
 from app.invoices.records import ContactRecord, InvoiceRecord
-from app.invoices.xero_service import XeroInvoiceService
+from app.invoices.xero_service import XeroInvoiceService, _line_item
 from app.xero.client import XeroClient
 from app.xero.connection_store import XeroConnection, XeroConnectionStore
 from sqlalchemy.orm import sessionmaker
@@ -42,6 +46,90 @@ def test_create_invoice_requires_a_line() -> None:
     """An invoice proposal without lines is rejected."""
     with pytest.raises(ApiError):
         parse_action("create_invoice", {"contact_name": "Bob's Construction", "line_items": []})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("quantity", "Infinity"),
+        ("quantity", "99999999.99999"),
+        ("quantity", "100000000"),
+        ("unit_amount", "Infinity"),
+        ("unit_amount", "1.001"),
+        ("unit_amount", "1000000000000"),
+    ],
+)
+def test_invoice_numbers_are_exact_and_bounded(field: str, value: str) -> None:
+    """Non-finite, over-precise, and oversized chat or API numbers are rejected."""
+    line = {"description": "Labour", "quantity": "1", "unit_amount": "55.00"}
+    line[field] = value
+    with pytest.raises(ApiError):
+        parse_action("create_invoice", {"contact_name": "Bob's Construction", "line_items": [line]})
+
+
+def test_invoice_subtotal_and_line_count_are_bounded() -> None:
+    """Exact subtotal arithmetic and a line-count budget apply before a write."""
+    with pytest.raises(ApiError, match="Action payload is invalid"):
+        parse_action(
+            "create_invoice",
+            {
+                "contact_name": "Bob's Construction",
+                "line_items": [{"description": "Large", "quantity": "2", "unit_amount": str(MAX_INVOICE_SUBTOTAL)}],
+            },
+        )
+    line = {"description": "Labour", "quantity": "1", "unit_amount": "1.00"}
+    with pytest.raises(ApiError):
+        parse_action(
+            "create_invoice",
+            {"contact_name": "Bob's Construction", "line_items": [line] * 101},
+        )
+
+
+def test_non_invoice_validation_uses_general_recovery_guidance() -> None:
+    """A non-invoice validation failure does not recommend invoice numeric limits."""
+    with pytest.raises(ApiError) as raised:
+        parse_action("create_contact", {"name": ""})
+    assert raised.value.next_step == "Correct the invalid payload field and propose the action again."
+    assert "quantity" not in raised.value.next_step
+
+
+def test_valid_decimals_stay_exact_and_xero_receives_strings() -> None:
+    """Accepted values remain decimals and serialize to Xero without binary-float drift."""
+    parsed = parse_action(
+        "create_invoice",
+        {
+            "contact_name": "Bob's Construction",
+            "line_items": [{"description": "Usage", "quantity": "7000.0001", "unit_amount": "0.16"}],
+        },
+    )
+    assert isinstance(parsed, CreateInvoicePayload)
+    assert parsed.line_items[0].quantity == Decimal("7000.0001")
+    assert parsed.line_items[0].unit_amount == Decimal("0.16")
+    assert _line_item(parsed.line_items[0], "200", "NONE") == {
+        "Description": "Usage",
+        "Quantity": "7000.0001",
+        "UnitAmount": "0.16",
+        "AccountCode": "200",
+        "TaxType": "NONE",
+    }
+
+
+def test_invoice_api_rejects_non_finite_numbers(api) -> None:
+    """A huge JSON exponent cannot bypass backend validation through the invoice UI endpoint."""
+    client, fake = api
+    sign_in(client)
+    response = client.post(
+        "/invoices",
+        content=(
+            '{"contact_name":"Bob\'s Construction","line_items":'
+            '[{"description":"Labour","quantity":1,"unit_amount":1e309}]}'
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["what"] == "Request payload is invalid"
+    assert response.json()["why"] == "Input should be a finite number"
+    assert fake.write_calls == []
 
 
 def test_unknown_action_is_rejected() -> None:

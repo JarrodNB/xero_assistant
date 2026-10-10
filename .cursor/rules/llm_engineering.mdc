@@ -1,0 +1,182 @@
+---
+alwaysApply: true
+---
+## AI language and framework
+* Python is the language
+* PydanticAI is the framework unless specified otherwise
+* PydanticAI functionality should be used unless it is not a match for the use case
+* Pin model names and framework versions explicitly (no floating "latest")
+* Use typed outputs (Pydantic models) for all structured LLM responses, with validation and a defined retry-on-validation-failure behavior
+* Define a fallback model/provider strategy for outages or rate limits
+* Model configuration (name, temperature, max tokens) lives in config, not hardcoded in agent code
+
+## Guardrails and Safety (new section)
+* Prompt injection defenses, especially for content returned from tools or retrieved documents (treat as untrusted data)
+* Use Jev as a guardrail for malicious input unless specific otherwise
+* Output validation before taking any action based on LLM output
+* Defined escalation path when guardrails trigger
+
+## Observability
+* Langfuse or other should trace any calls to models including tool use, but should not trace other actions not related to AI
+* The traces should be  clear and easy to understand
+* Trace metadata: model, token counts, latency, cost, prompt version, and environment
+* Tag traces with session/user (pseudonymized) identifiers so conversations can be followed end to end
+* Track cost and token usage per use case, with alerts on anomalies
+* Capture user feedback (thumbs up/down, corrections) on traces for future eval data, if applicable
+* Define a sampling and retention policy for traces?
+
+## Prompt management
+* Initial prompts can remain in the repo initially, but Langfuse or other provider if mentioned, should be set up in the repo
+* Version every prompt and record which version produced each trace
+* Prompt changes must pass the relevant eval sets before promotion
+* Support rollback to a previous prompt version without a code deploy
+* Separate prompt templates from injected variables
+
+## Agents
+* All agents should have a modest iteration limit
+* Add limits beyond iterations: max tool calls per run, max tokens, and a wall-clock timeout
+* Define behavior when a limit is hit (graceful partial answer vs. explicit failure)
+* Human-in-the-loop approval for irreversible or high-impact actions (writes, payments, emails)
+* Idempotency for any tool that mutates state, so retries are safe
+* Conversation memory/context management: define what is kept, summarized, or dropped
+* Timeouts, retries with backoff, and rate-limit handling on every model call
+* First message in a conversation in a conversation use case should be checked against a prompt cache
+
+## Embeddings
+
+* Both the vector store and the individual embeddings used for vector searches should use the **same embedding model**.
+* Record the embedding model name and version alongside the vector store as part of the metadata
+* A change of embedding model requires a full re-index plan
+* Define chunking strategy (size, overlap, structure-aware splitting) and evaluate it
+* Store metadata with chunks (source, section, timestamps, permissions) to enable filtering
+
+## Vector Searches
+
+* Use a **golden dataset with deterministic evaluation** to ensure queries return the minimum set of correct documents.
+* The deterministic evals can be mocked initially, but should retain production form
+* **Hybrid search should always be the default.**
+* Enforce access control and tenant isolation at query time through metadata filters, never after retrieval
+* Metrics to report: recall@k, precision@k, MRR, not just pass/fail
+* Define how stale or deleted documents are removed from the index
+* Specify the hybrid weighting method (e.g., reciprocal rank fusion) and tune it against the golden set
+
+## Reranking
+
+* Use a **golden dataset with deterministic evaluation** to ensure reranking correctly orders the retrieved documents.
+* Report ranking metrics (nDCG, MRR) and compare against the no-rerank baseline to justify the added latency and cost
+* Set a latency budget and a candidate count limit for the rerank step
+
+# Prompt Injection
+* Models like Jev or LLMs should be used to detect injections
+* Deterministic detection should still be used
+
+## Evals
+* Each use case should have it's own eval sets, including subagents, guardrails, etc
+* **Golden dataset with deterministic tests:** Run deterministic tests against the live response from the model. The golden dataset is separate from LLM-as-a-judge evaluation.
+* **LLM-as-a-judge:** Has its own dataset and uses a defined rubric with a live LLM call, typically using a larger model, to score the live response from the model.
+* These evaluations are **only run during offline testing** and are **not part of the production workflow**.
+* These evaluations should produce **usable outputs** and be **runnable as part of continuous integration (CI)**
+* When given a conversation that is not correct, add data points to the evals
+* Regression gating: CI fails if eval scores drop below a threshold
+* Refusal and "I don't know" cases should be explicitly tested
+
+## AI Data Privacy
+
+User data, including IDs, credentials, financial information, and other sensitive or identifying information, must not be sent to LLM providers or Langfuse unless explicitly required.
+
+When sensitive data must be sent to an LLM or observability system:
+
+1. Mask or redact sensitive information before sending it.
+2. Process the data using the LLM or observability system.
+3. Restore the original values only within the application's trusted environment.
+
+Prefer passing only the minimum information necessary for the task.
+
+LLM prompts, tool responses, traces, and evaluation datasets should not contain unnecessary sensitive user information.
+
+* Define which data classes are always blocked vs. maskable, and keep that list in one place
+* Confirm provider data-retention and training-use terms (zero data retention where possible)
+* Redaction must be tested with its own evals (PII leak tests on prompts and traces)
+* Apply the same rules to logs, error messages, and exception trackers, not just Langfuse
+* Specify how masked tokens map back to real values and where that mapping is stored
+
+## Tools
+
+Use **MCP** for the tool layer.
+
+* Rate limits and result size caps on each tool
+* Tool names should be consistent and descriptive (verb_noun)
+* Unit tests for each tool plus eval cases that check the LLM selects the right tool and arguments
+* Version tool schemas and avoid breaking changes
+* Empty-result responses should be explicit ("no invoices found for X") rather than blank
+
+### Database Tools
+
+Database access must be performed through purpose-specific tools.
+
+* Do not allow the LLM to execute arbitrary SQL.
+* Each database tool should be scoped to a specific table/domain.
+* Sanitize and validate all arguments.
+* Only return the fields the LLM actually needs.
+* Avoid exposing unnecessary database fields.
+* Format results so they are easy for the LLM to understand.
+* The LLM should not need to provide internal database IDs when they can be resolved by the tool.
+* Tools should resolve internal IDs using available context and human-readable identifiers where practical.
+* Pagination or truncation behavior defined, with a clear signal to the LLM when results were truncated
+
+For example, instead of:
+
+```text
+query_database(sql)
+```
+
+prefer:
+
+```text
+find_invoices(customer_name, status)
+```
+
+The tool should handle the underlying database queries and ID resolution internally.
+
+### Tool Definitions
+
+Every tool description should clearly specify:
+
+* **When to use the tool**
+* **When not to use the tool**
+* **Parameters and expected values**
+* **One or two concise examples**
+
+Tool descriptions should be concise enough to avoid unnecessarily increasing LLM context and token usage.
+
+### Tool Errors
+
+Tool errors should provide useful information to the LLM.
+
+* Use consistent error categories (validation, not found, permission denied, transient, internal)
+* Include suggested valid values or corrected parameters when a validation error occurs
+* Log full error details internally while returning the sanitized version to the LLM
+
+Errors should explain:
+
+* What went wrong.
+* Why it failed, when known.
+* Whether the operation can be retried.
+* What the LLM should do next, when appropriate.
+
+Do not expose unnecessary internal implementation details.
+
+## Testing and CI/CD
+* Separate fast unit tests (mocked models) from slower live evals
+* Cost budget for CI eval runs, with a smaller smoke set for every PR and the full set nightly or on prompt/model changes
+* Store eval results over time to track trends
+
+## Deployment and Operations
+* Feature flags or gradual rollout for new prompts, models, or agent behavior
+* Caching strategy for embeddings and repeated model calls where safe
+* Streaming responses where the UX benefits
+* Runbook for model provider outages and degraded quality
+
+## Documentation
+* Each use case documents its purpose, model, prompt version, tools, eval sets, and known limitations
+* Maintain a decision log for framework deviations (the "unless it is not a match" cases)

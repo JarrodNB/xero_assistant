@@ -5,6 +5,7 @@ Public API:
 """
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
@@ -70,6 +71,7 @@ def create_app(
         https_only=resolved.session_https_only,
     )
     app.add_exception_handler(ApiError, _api_error)
+    app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.include_router(auth_router)
     app.include_router(xero_router)
     app.include_router(invoices_router)
@@ -88,6 +90,22 @@ def _api_error(_request: Request, error: Exception) -> JSONResponse:
             "why": api_error.why,
             "retryable": api_error.retryable,
             "next_step": api_error.next_step,
+        },
+    )
+
+
+def _request_validation_error(_request: Request, error: Exception) -> JSONResponse:
+    """Render request validation without echoing unsafe or non-JSON input values."""
+    validation_error = error if isinstance(error, RequestValidationError) else None
+    errors = validation_error.errors() if validation_error is not None else []
+    why = str(errors[0].get("msg", "The request fields are invalid.")) if errors else "The request fields are invalid."
+    return JSONResponse(
+        status_code=422,
+        content={
+            "what": "Request payload is invalid",
+            "why": why,
+            "retryable": False,
+            "next_step": "Correct the invalid fields and try again.",
         },
     )
 

@@ -3,6 +3,7 @@
 Public API:
 - test_mcp_tool_list_has_no_xero_writes
 - test_propose_action_does_not_write_to_xero
+- test_propose_action_rejects_an_oversized_chat_amount
 """
 
 import json
@@ -63,3 +64,35 @@ async def test_propose_action_does_not_write_to_xero(tmp_path) -> None:
         current_services.reset(services_token)
     assert fake.write_calls == []
     assert fake.invoices == []
+
+
+@pytest.mark.asyncio
+async def test_propose_action_rejects_an_oversized_chat_amount(tmp_path) -> None:
+    """Chat cannot store a pending action whose amount exceeds the backend limit."""
+    fake = FakeInvoiceGateway()
+    repository = ActionRepository(sessionmaker(bind=create_engine_for(str(tmp_path / "app.db"))))
+    repository.ensure_conversation("conv-1")
+    services = AppServices(invoices=fake, actions=repository)
+    services_token = current_services.set(services)
+    conversation_token = current_conversation_id.set("conv-1")
+    try:
+        server = build_mcp_server()
+        payload = json.dumps(
+            {
+                "contact_name": "Bob's Construction",
+                "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 1_000_000_000_000}],
+            }
+        )
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "propose_action",
+                {"action_type": "create_invoice", "payload_json": payload},
+            )
+    finally:
+        current_conversation_id.reset(conversation_token)
+        current_services.reset(services_token)
+    stored = repository.get_conversation("conv-1")
+    assert stored is not None
+    assert stored[1] == []
+    assert "999999999999.99" in str(result)
+    assert fake.write_calls == []

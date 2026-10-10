@@ -40,6 +40,7 @@ ORCHESTRATOR_DETERMINISTIC_CASES = (
     "supplied_reference",
     "out_of_scope",
     "injection_is_data",
+    "oversized_chat_amount",
 )
 
 ORCHESTRATOR_JUDGE_CASES = (
@@ -54,6 +55,7 @@ ORCHESTRATOR_JUDGE_CASES = (
     "supplied_reference",
     "out_of_scope",
     "injection_is_data",
+    "oversized_chat_amount",
 )
 
 INVOICES_DETERMINISTIC_CASES = (
