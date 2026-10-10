@@ -9,7 +9,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { FormEvent, useLayoutEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../lib/api";
 import { ProposedAction, StoredMessage } from "../lib/types";
 
@@ -52,6 +52,8 @@ type OptionalField = {
 };
 
 const NEAR_BOTTOM_PX = 48;
+const STREAM_CHARACTERS_PER_TICK = 2;
+const STREAM_TICK_MS = 30;
 
 const OPTIONAL_FIELDS: Record<string, OptionalField[]> = {
   create_contact: [{ key: "email", label: "Email", inputType: "email", placeholder: "Optional" }],
@@ -93,6 +95,58 @@ function messageText(message: ChatMessage): string {
     .filter((part) => part.type === "text" && part.text)
     .map((part) => part.text ?? "")
     .join("\n");
+}
+
+type PacedTextProps = {
+  active: boolean;
+  messageId: string;
+  onPacingChange: (messageId: string, pacing: boolean) => void;
+  text: string;
+};
+
+/**
+ * Reveal streamed text at a readable rate even when network chunks arrive quickly.
+ */
+function PacedText({ active, messageId, onPacingChange, text }: PacedTextProps) {
+  const startedPaced = useRef(active);
+  const target = useRef(text);
+  const [visible, setVisible] = useState(active ? "" : text);
+  target.current = text;
+  const hasMore = visible.length < text.length;
+  const stillMatches = text.startsWith(visible);
+
+  useEffect(() => {
+    if (active) {
+      startedPaced.current = true;
+    }
+    if (!startedPaced.current) {
+      setVisible(text);
+      return;
+    }
+    if (!stillMatches) {
+      setVisible(target.current);
+      onPacingChange(messageId, false);
+      return;
+    }
+    if (!hasMore) {
+      onPacingChange(messageId, false);
+      return;
+    }
+    onPacingChange(messageId, true);
+    const timer = window.setTimeout(() => {
+      setVisible(target.current.slice(0, visible.length + STREAM_CHARACTERS_PER_TICK));
+    }, STREAM_TICK_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, hasMore, messageId, onPacingChange, stillMatches, visible]);
+
+  useEffect(
+    () => () => {
+      onPacingChange(messageId, false);
+    },
+    [messageId, onPacingChange],
+  );
+
+  return visible;
 }
 
 /**
@@ -333,6 +387,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
       parts: [{ type: "text" as const, text: message.content }],
     })),
   );
+  const historyMessageIds = useRef(new Set(seed.map((message) => message.id)));
   const grouped = groupHistoryActions(transcript, historyActions);
   const { messages, sendMessage, status } = useChat({
     id: conversation,
@@ -348,13 +403,34 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, Record<string, string>>>({});
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [deciding, setDeciding] = useState(false);
+  const [pacingIds, setPacingIds] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const decidingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
-  const locked = busy || deciding;
+  const visuallyBusy = busy || pacingIds.size > 0;
+  const locked = visuallyBusy || deciding;
   const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
   const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
+
+  /**
+   * Track replies that are still being revealed after their network stream completes.
+   */
+  const setMessagePacing = useCallback((messageId: string, pacing: boolean) => {
+    setPacingIds((current) => {
+      const hasMessage = current.has(messageId);
+      if (hasMessage === pacing) {
+        return current;
+      }
+      const updated = new Set(current);
+      if (pacing) {
+        updated.add(messageId);
+      } else {
+        updated.delete(messageId);
+      }
+      return updated;
+    });
+  }, []);
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -537,8 +613,13 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
       <div className="messages" ref={listRef}>
         {visible.map((message) => {
           const streaming = busy && message.id === lastMessageId;
+          const newAssistantReply =
+            message.role === "assistant" &&
+            message.id === lastMessageId &&
+            !historyMessageIds.current.has(message.id);
+          const pacing = [...pacingIds].some((id) => id.startsWith(`${message.id}-text-`));
           const texts = (message.parts ?? []).filter((part) => part.type === "text" && part.text);
-          const proposals = streaming
+          const proposals = streaming || pacing
             ? []
             : (message.parts ?? []).flatMap((part) => {
                 const proposal = asProposal(part.output);
@@ -548,7 +629,16 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
             <div className="message-group" key={message.id}>
               {texts.map((part, index) => (
                 <p className={`bubble ${message.role}`} key={`${message.id}-text-${index}`}>
-                  {part.text}
+                  {message.role === "assistant" ? (
+                    <PacedText
+                      active={newAssistantReply}
+                      messageId={`${message.id}-text-${index}`}
+                      onPacingChange={setMessagePacing}
+                      text={part.text ?? ""}
+                    />
+                  ) : (
+                    part.text
+                  )}
                 </p>
               ))}
               {proposals.map((proposal) => renderProposal(proposal, locked))}
@@ -563,9 +653,9 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Can you send an invoice to Bob's Construction for $55?"
-          disabled={busy}
+          disabled={visuallyBusy}
         />
-        <button className="primary" type="submit" disabled={busy}>
+        <button className="primary" type="submit" disabled={visuallyBusy}>
           Send
         </button>
       </form>
