@@ -284,7 +284,7 @@ function confirmOverrides(proposal: ProposedAction, values: Record<string, strin
 }
 
 /**
- * Preview the confirmation sentence from the optional fields being edited.
+ * Preview the confirmation sentence without echoing free-form reference edits.
  */
 function previewSummary(proposal: ProposedAction, values: Record<string, string>): string {
   const payload = proposal.payload ?? {};
@@ -297,16 +297,8 @@ function previewSummary(proposal: ProposedAction, values: Record<string, string>
     if (!base) {
       return proposal.summary;
     }
-    const extras: string[] = [];
-    const reference = (values.reference ?? "").trim();
     const due = (values.due_date ?? "").trim();
-    if (reference) {
-      extras.push(`reference ${reference}`);
-    }
-    if (due) {
-      extras.push(`due ${due}`);
-    }
-    return extras.length > 0 ? `${base} with ${extras.join(" and ")}.` : `${base}.`;
+    return due ? `${base} with due ${due}.` : `${base}.`;
   }
   return proposal.summary;
 }
