@@ -1,5 +1,5 @@
 /**
- * Purpose: Signed-in shell with navigation between invoices, contacts, and chat.
+ * Purpose: Signed-in shell for Ledger's current Xero capabilities.
  *
  * Public API:
  * - AppShell
@@ -13,7 +13,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { apiRequest, fetchSession } from "../../lib/api";
 
 /**
- * Keep invoice and chat pages behind the interviewer session.
+ * Keep all application pages behind the interviewer session.
  */
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -86,7 +86,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {notice ? <p className={notice.startsWith("Connected") ? "banner banner-ok" : "banner banner-error"}>{notice}</p> : null}
         {xeroConnected ? null : (
           <div className="connect-banner panel">
-            <p>Connect the Xero Demo Company before loading invoices.</p>
+            <p>Connect the Xero Demo Company to use Ledger.</p>
             <a className="primary" href="/api/xero/start">
               Connect Xero
             </a>

@@ -11,7 +11,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ledger",
-  description: "Xero assistant for a demo company. Current domains are contacts and invoices.",
+  description: "Ledger is a financial assistant for a connected Xero demo company.",
 };
 
 /**

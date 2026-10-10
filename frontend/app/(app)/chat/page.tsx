@@ -27,7 +27,7 @@ type OpenThread = {
 };
 
 /**
- * Open the invoice chat and its stored threads.
+ * Open the Xero assistant chat and its stored threads.
  */
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);

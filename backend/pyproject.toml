@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xero-assistant"
 version = "0.1.0"
-description = "Invoice assistant for a Xero demo company."
+description = "Financial assistant for a Xero demo company."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

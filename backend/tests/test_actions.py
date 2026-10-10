@@ -14,6 +14,7 @@ Public API:
 - test_confirm_invoice_applies_reference_and_due_date
 - test_confirm_cannot_change_required_fields
 - test_confirm_rejects_an_invalid_due_date
+- test_system_prompt_positions_ledger_as_a_financial_assistant
 - test_system_prompt_asks_for_optional_create_fields
 - test_list_contacts_returns_name_and_email
 - test_list_contacts_pages_until_a_short_page
@@ -369,6 +370,16 @@ def test_system_prompt_asks_for_optional_create_fields() -> None:
     assert "due date" in text
     assert "14 days" in text
     assert "skip" in text
+
+
+def test_system_prompt_positions_ledger_as_a_financial_assistant() -> None:
+    """The main prompt treats invoices as a current capability, not Ledger's identity."""
+    text = SYSTEM_PROMPT.casefold()
+    assert "xero assistant" in text
+    assert "financial information and tasks" in text
+    assert "tools available in this version cover contacts and sales invoices" in text
+    assert "work with invoices" not in text
+    assert "only help with invoices" not in text
 
 
 def test_ui_save_also_refuses_to_create_a_missing_contact(api) -> None:

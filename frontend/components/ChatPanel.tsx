@@ -644,7 +644,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Can you send an invoice to Bob's Construction for $55?"
+          placeholder="Ask Ledger about the connected Xero company"
           disabled={visuallyBusy}
         />
         <button className="primary" type="submit" disabled={visuallyBusy}>

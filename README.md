@@ -1,6 +1,6 @@
 # Ledger
 
-A Xero assistant for the demo company. The current domains are contacts and invoices. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read those records and propose changes, and each change runs only after its own confirmation.
+Ledger is a financial assistant for the connected Xero demo company. Its first implemented capabilities cover contacts and sales invoices, with room for additional Xero workflows. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read supported records and propose changes, and each change runs only after its own confirmation.
 
 ## Run with Docker
 

@@ -23,8 +23,8 @@ from app.config import Settings
 
 JEV_MODEL = "jev-latest"
 
-REFUSAL = "I can only help with financial related requests in the demo company. If your message was a request, please rephrase it more clearly."
-SUPPORT = "If you might hurt yourself, call or text 988 in the US. I can only help with invoices."
+REFUSAL = "I can only help with financial requests in the demo company. If your message was a request, please rephrase it more clearly."
+SUPPORT = "If you might hurt yourself, call or text 988 in the US. I can only help with financial requests in the demo company."
 CHECK_FAILED = "Something went wrong before I could answer. Please try again."
 
 
