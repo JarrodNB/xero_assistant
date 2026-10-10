@@ -6,6 +6,7 @@ Public API:
 - test_invoices_script_picks_each_read_tool
 - test_invoice_question_reaches_the_gateway
 - test_missing_reference_asks_once
+- test_orchestrator_receives_current_date
 - test_orchestrator_tools_are_delegate_and_propose
 - test_skip_proposes_without_delegating
 """
@@ -58,6 +59,35 @@ async def test_orchestrator_tools_are_delegate_and_propose() -> None:
     agent = build_chat_agent(FunctionModel(respond), build_mcp_server())
     await agent.run("How much is unpaid?")
     assert seen["tools"] == {"delegate_task", "propose_action"}
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_receives_current_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each model run receives the current date for resolving relative dates."""
+    from app.chat import prompt as prompt_module
+
+    class OctoberTenth(prompt_module.date):
+        """Return a stable date for the prompt regression test."""
+
+        @classmethod
+        def today(cls) -> "OctoberTenth":
+            """Return October 10, 2026."""
+            return cls(2026, 10, 10)
+
+    seen: list[str] = []
+
+    def respond(_messages, info):  # type: ignore[no-untyped-def]
+        """Record system instructions and stop."""
+        seen.append(info.instructions or "")
+        return ModelResponse(parts=[TextPart(content="Nothing was created.")])
+
+    monkeypatch.setattr(prompt_module, "date", OctoberTenth)
+    agent = build_chat_agent(FunctionModel(respond), build_mcp_server())
+    await agent.run("Create an invoice due tomorrow.")
+
+    instructions = "\n".join(seen)
+    assert "Today's date is 2026-10-10" in instructions
+    assert "relative dates" in instructions
 
 
 @pytest.mark.asyncio

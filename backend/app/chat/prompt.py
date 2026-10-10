@@ -3,7 +3,10 @@
 Public API:
 - INVOICES_PROMPT
 - SYSTEM_PROMPT
+- current_date_instruction
 """
+
+from datetime import date
 
 INVOICES_PROMPT = """
 You look up contacts and invoices for the demo company. You do not speak to the person. Return the names, invoice numbers, and amounts the tools report.
@@ -33,3 +36,11 @@ Do not say an invoice or contact was created, updated, or voided unless a later 
 When a message includes an execution result, or says execution failed, explain that outcome in plain language. Use the amounts and names in the result. Do not repeat action ids. Do not quote the internal sentence that begins with "The user confirmed action" or "The user denied action".
 When a message says the person denied the action, acknowledge that and do not propose it again unless they ask.
 """.strip()
+
+
+def current_date_instruction() -> str:
+    """Tell the orchestrator today's date so it can resolve relative dates correctly."""
+    return (
+        f"Today's date is {date.today().isoformat()}. "
+        "Interpret relative dates such as today, tomorrow, and next week from this date."
+    )

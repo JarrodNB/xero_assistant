@@ -14,7 +14,7 @@ from pydantic_ai_harness import SubAgent, SubAgents
 from app.chat.guardrails import chat_guardrails
 from app.chat.guardrails.redaction import tool_result_guardrail
 from app.chat.invoices_agent import build_invoices_agent
-from app.chat.prompt import SYSTEM_PROMPT
+from app.chat.prompt import SYSTEM_PROMPT, current_date_instruction
 from app.chat.summary import apply_history_summary
 
 
@@ -25,7 +25,7 @@ def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
     return Agent(
         model,
         name="orchestrator",
-        instructions=SYSTEM_PROMPT,
+        instructions=[SYSTEM_PROMPT, current_date_instruction],
         toolsets=[propose],
         capabilities=[
             *chat_guardrails(),
