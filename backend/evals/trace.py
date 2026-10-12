@@ -11,7 +11,7 @@ import json
 
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 
-from app.chat.guardrails.pii import PiiVault
+from app.chat.guardrails.pii import PiiVault, map_strings
 from app.chat.guardrails.redaction import redact_for_trace
 
 TRACE_HEADING = "\nTool trace:\n"
@@ -37,10 +37,18 @@ def format_tool_trace(result: object) -> str:
     """Format tool calls and returns without leaving personal data in the eval output."""
     vault = PiiVault()
     lines: list[str] = []
-    for message in result.all_messages():  # type: ignore[attr-defined]
+    for message in result.new_messages():  # type: ignore[attr-defined]
         for part in getattr(message, "parts", []):
             if isinstance(part, ToolCallPart):
-                lines.append(f"call {part.tool_name} {_trace_text(vault, _args_text(part.args))}")
+                args = part.args_as_dict()
+                protected_args = _protected_value(vault, args)
+                if isinstance(args.get("payload_json"), str):
+                    try:
+                        payload = json.loads(args["payload_json"])
+                        protected_args["payload_json"] = json.dumps(_protected_value(vault, payload))
+                    except ValueError:
+                        pass
+                lines.append(f"call {part.tool_name} {_args_text(protected_args)}")
             elif isinstance(part, ToolReturnPart):
                 lines.append(f"result {part.tool_name} {_trace_text(vault, str(part.content))}")
     return "\n".join(lines)
@@ -54,6 +62,11 @@ def _args_text(args: object) -> str:
         return json.dumps(args, ensure_ascii=False, default=str)
     except TypeError:
         return str(args)
+
+
+def _protected_value(vault: PiiVault, value: object) -> object:
+    """Redact individual values before serializing so recognizer spans cannot corrupt JSON."""
+    return map_strings(value, lambda text: _trace_text(vault, text))
 
 
 def _trace_text(vault: PiiVault, value: str) -> str:

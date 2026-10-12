@@ -2,6 +2,8 @@
 
 Ledger is a financial assistant for the connected Xero demo company. Its first implemented capabilities cover contacts and sales invoices, with room for additional Xero workflows. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read supported records and propose changes, and each change runs only after its own confirmation.
 
+Once required details are known, chat proposes the change immediately. Contact email, invoice reference, and invoice due date are optional; you can supply them in chat or edit them on the confirmation card. An omitted due date defaults to 14 days from today. The assistant asks for missing required details and can use earlier messages to resolve follow-ups such as "same contact as last".
+
 ## Run with Docker
 
 Docker Desktop needs to be running.
@@ -38,6 +40,8 @@ docker compose run --rm --no-deps backend python -m evals.jev.user_message.run
 ```
 
 Jev also screens the protected latest user message with its bounded two-message conversation tail on a live chat turn when `TYPESAFE_API_KEY` is set. The chat request does not call a judge.
+
+The orchestrator cases include optional-field defaults, partially supplied fields, required-detail clarification, and a same-contact follow-up with actual message history. Conversation cases provide `prompt` and `previous_messages` (`role`, `content`). The eval protects both with one request-scoped vault before the model receives them, and its tool trace includes only the new turn.
 
 ## Optional traces
 

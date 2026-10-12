@@ -5,6 +5,7 @@ Public API:
 """
 
 import json
+import re
 
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -25,12 +26,23 @@ def scripted_respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResp
     if "propose_action" not in tools:
         return invoices_respond(messages, info)
     user = _latest_user_text(messages)
+    if "same contact as last" in user.casefold():
+        user = " ".join(
+            str(part.content)
+            for message in messages
+            for part in getattr(message, "parts", [])
+            if isinstance(part, UserPromptPart)
+        )
     called = _called_tools(messages)
     return _parent_turn(user, called)
 
 
 def _parent_turn(user: str, called: list[str]) -> ModelResponse:
-    """Delegate a read, propose a skipped invoice, or answer."""
+    """Delegate a read, propose a complete invoice, or clarify required details."""
+    if "create a contact named" in user.casefold() and "propose_action" not in called:
+        return _call("propose_action", {
+            "action_type": "create_contact", "payload_json": json.dumps({"name": "Cedar Demo Supplies"}),
+        })
     if _should_delegate(user) and "delegate_task" not in called:
         return _call("delegate_task", {"agent_name": "invoices", "task": user})
     if _should_propose(user) and "propose_action" not in called:
@@ -58,6 +70,13 @@ def _invoice_payload(user: str) -> dict[str, object]:
         "contact_name": "Bob's Construction",
         "line_items": [{"description": "Labour", "quantity": 1, "unit_amount": 55}],
     }
+    amounts = re.findall(r"\$(\d+)", user)
+    if amounts:
+        payload["line_items"] = [{
+            "description": "consulting" if "consulting" in user.casefold() else "Labour",
+            "quantity": 1,
+            "unit_amount": int(amounts[-1]),
+        }]
     if "PO-9" in user:
         payload["reference"] = "PO-9"
     if "2026-10-21" in user:
@@ -72,9 +91,7 @@ def _should_propose(user: str) -> bool:
         return False
     if "skip" in folded and "bob" in folded:
         return True
-    if "not given" in folded or "have not" in folded:
-        return False
-    return "bob" in folded and "reference" in folded and "due date" in folded
+    return "bob" in folded and "invoice" in folded and "$" in folded
 
 
 def _is_refusal(user: str) -> bool:
@@ -108,8 +125,8 @@ def _parent_answer(user: str) -> str:
         return "I proposed an invoice to Bob's Construction for $55. Nothing was created until you confirm."
     if "bob" in folded:
         return (
-            "Please provide a reference and a due date. "
-            "A blank due date means 14 days from today. Nothing was created."
+            "What amount should the invoice be for? You can also provide a reference or due date. "
+            "An omitted due date means 14 days from today. Nothing was created."
         )
     if "february" in folded:
         return "I compared February 2026 with January 2026. Nothing was created."

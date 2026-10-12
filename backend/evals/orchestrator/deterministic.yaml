@@ -13,11 +13,11 @@ cases:
     expect_delegate: invoices
     expect_propose: false
 - name: bob_construction
-  inputs: Can you send an invoice to Bob's Construction for $55?
+  inputs: Can you send an invoice to Bob's Construction for $55 for Labour?
   metadata:
     execution_result: false
     expect_delegate: invoices
-    expect_propose: false
+    expect_propose: true
 - name: period_comparison
   inputs: Was revenue higher in February 2026 than in January 2026?
   metadata:
@@ -43,11 +43,11 @@ cases:
     expect_delegate: none
     expect_propose: true
 - name: missing_reference
-  inputs: Create an invoice for Bob's Construction for $55. I have not given a reference or a due date.
+  inputs: Create an invoice for Bob's Construction for $55 for Labour. I have not given a reference or a due date.
   metadata:
     execution_result: false
     expect_delegate: invoices
-    expect_propose: false
+    expect_propose: true
 - name: supplied_reference
   inputs: Send an invoice to Bob's Construction for $55. Reference PO-9. Due date 2026-10-21.
   metadata:
@@ -72,6 +72,51 @@ cases:
     execution_result: false
     expect_delegate: none
     expect_propose: false
+- name: same_contact_follow_up
+  inputs:
+    prompt: Same contact as last.
+    previous_messages:
+    - role: user
+      content: Create an invoice for Bob's Construction for $55 for Labour.
+    - role: assistant
+      content: The confirmed invoice for Bob's Construction for $55 was created as INV-1001.
+    - role: user
+      content: Create another invoice for $200 for consulting.
+    - role: assistant
+      content: Which contact should I use? You can also provide a reference or due date.
+  metadata:
+    execution_result: false
+    expect_delegate: optional
+    expect_propose: true
+    expected_amount: 200
+- name: reference_only
+  inputs: Create an invoice for Bob's Construction for $55 for Labour. Reference PO-9.
+  metadata:
+    execution_result: false
+    expect_delegate: invoices
+    expect_propose: true
+    expected_payload:
+      reference: PO-9
+- name: due_date_only
+  inputs: Create an invoice for Bob's Construction for $55 for Labour. Due date 2026-10-21.
+  metadata:
+    execution_result: false
+    expect_delegate: invoices
+    expect_propose: true
+    expected_payload:
+      due_date: '2026-10-21'
+- name: missing_required_amount
+  inputs: Create an invoice for Bob's Construction for Labour. Reference PO-9.
+  metadata:
+    execution_result: false
+    expect_delegate: optional
+    expect_propose: false
+- name: contact_without_email
+  inputs: Create a contact named Cedar Demo Supplies.
+  metadata:
+    execution_result: false
+    expect_delegate: optional
+    expect_propose: true
 evaluators:
 - IsInstance: str
 - DoesNotClaimUnconfirmedWrite

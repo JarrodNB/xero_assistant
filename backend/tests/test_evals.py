@@ -12,13 +12,18 @@ Public API:
 - test_orchestrator_deterministic_dataset
 - test_orchestrator_judge_dataset
 - test_unconfirmed_write_claim_evaluator
+- test_tool_trace_excludes_historical_calls
+- test_tool_trace_keeps_redacted_payload_parseable
 """
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic_evals.evaluators import EqualsExpected, EvaluatorContext, GEval, LLMJudge
 from pydantic_evals.otel.span_tree import SpanTree
+from pydantic_ai.messages import ModelResponse, ToolCallPart
 
 from app.chat.guardrails.context import current_guardrail_context
 from app.chat.guardrails.pii import current_vault
@@ -35,7 +40,7 @@ from evals.jev.user_message.run import (
 )
 from evals.orchestrator.evaluators import ExpectedDelegate
 from evals.orchestrator.run import evaluate_orchestrator_dataset, load_orchestrator_dataset
-from evals.trace import TRACE_HEADING
+from evals.trace import TRACE_HEADING, format_tool_trace
 
 ORCHESTRATOR_DETERMINISTIC_CASES = (
     "unpaid_total",
@@ -50,6 +55,11 @@ ORCHESTRATOR_DETERMINISTIC_CASES = (
     "out_of_scope",
     "injection_is_data",
     "oversized_chat_amount",
+    "same_contact_follow_up",
+    "reference_only",
+    "due_date_only",
+    "missing_required_amount",
+    "contact_without_email",
 )
 
 ORCHESTRATOR_JUDGE_CASES = (
@@ -65,6 +75,11 @@ ORCHESTRATOR_JUDGE_CASES = (
     "out_of_scope",
     "injection_is_data",
     "oversized_chat_amount",
+    "same_contact_follow_up",
+    "reference_only",
+    "due_date_only",
+    "missing_required_amount",
+    "contact_without_email",
 )
 
 INVOICES_DETERMINISTIC_CASES = (
@@ -200,6 +215,34 @@ def test_unconfirmed_write_claim_evaluator() -> None:
     assert evaluator.evaluate(claimed) is False
     assert evaluator.evaluate(allowed) is True
     assert evaluator.evaluate(quiet) is True
+    assert evaluator.evaluate(_context("Nothing has been created yet.", {})) is True
+    assert evaluator.evaluate(_context("No invoice has been created.", {})) is True
+    assert evaluator.evaluate(_context("Nothing has been created yet. I created another invoice.", {})) is False
+
+
+def test_tool_trace_excludes_historical_calls() -> None:
+    """Only calls from the evaluated turn count toward proposal and delegation scores."""
+    old = ModelResponse(parts=[ToolCallPart(tool_name="propose_action", args={})])
+    new = ModelResponse(parts=[ToolCallPart(tool_name="delegate_task", args={"agent_name": "invoices"})])
+    result = SimpleNamespace(all_messages=lambda: [old, new], new_messages=lambda: [new])
+    trace = format_tool_trace(result)
+    assert "call delegate_task" in trace
+    assert "call propose_action" not in trace
+
+
+def test_tool_trace_keeps_redacted_payload_parseable() -> None:
+    """Nested proposal JSON retains its schema while sensitive values are masked."""
+    payload = {"name": "Cedar Demo Supplies", "email": "prior@example.com", "reference": "sk-abcdefghijklmnopqrstuvwxyz123456"}
+    message = ModelResponse(parts=[ToolCallPart(tool_name="propose_action", args={
+        "action_type": "create_contact", "payload_json": json.dumps(payload),
+    })])
+    trace = format_tool_trace(SimpleNamespace(new_messages=lambda: [message]))
+    args = json.loads(trace.removeprefix("call propose_action "))
+    restored_payload = json.loads(args["payload_json"])
+    assert set(restored_payload) == set(payload)
+    assert "prior@example.com" not in trace
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in trace
+    assert "[redacted_email:" in restored_payload["email"]
 
 
 @pytest.mark.asyncio
@@ -207,7 +250,7 @@ async def test_orchestrator_deterministic_dataset(tmp_path: Path) -> None:
     """Compare the orchestrator's answer and tool trace with the case expectations."""
     report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="deterministic")
     assert report.failures == []
-    assert all(case.assertions for case in report.cases)
+    assert all(case.assertions and all(item.value is True for item in case.assertions.values()) for case in report.cases)
 
 
 @pytest.mark.asyncio
@@ -215,7 +258,7 @@ async def test_orchestrator_judge_dataset(tmp_path: Path) -> None:
     """Have a judge model grade the orchestrator against each case rubric."""
     report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="judge")
     assert report.failures == []
-    assert all(case.assertions for case in report.cases)
+    assert all(case.assertions and all(item.value is True for item in case.assertions.values()) for case in report.cases)
 
 
 @pytest.mark.asyncio

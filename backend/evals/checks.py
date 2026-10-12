@@ -6,6 +6,7 @@ Public API:
 """
 
 from dataclasses import dataclass
+import re
 
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
@@ -34,4 +35,5 @@ class DoesNotClaimUnconfirmedWrite(Evaluator):
         if metadata.get("execution_result"):
             return True
         text = answer_text(ctx.output).casefold()
+        text = re.sub(r"\b(?:nothing|no (?:invoice|contact)) has been (?:created|updated|voided)\b", "", text)
         return not any(phrase in text for phrase in WRITE_CLAIM_PHRASES)

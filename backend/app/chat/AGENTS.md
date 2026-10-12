@@ -4,6 +4,8 @@ Python files here use the module docstring in `backend/AGENTS.md`. Every functio
 
 This package runs one chat turn. The orchestrator delegates contact and invoice reads to the invoices subagent and calls `propose_action` itself. The child does not propose. Personal data is replaced with numbered placeholders before the chat model, the summary model, and Jev. Tool arguments are restored for reads and `propose_action`. A delegated task stays tokenized. Tool results are protected again before a model reads them. API keys are redacted and are not restored. A known-phrase screen then refuses jailbreaks, physical harm, dosage questions, and clear self-harm statements. When `TYPESAFE_API_KEY` is set, Jev screens whatever that phrase screen allowed together with at most two protected preceding messages from the same conversation. Protected historical content has a combined 4,000-character budget allocated newest first. That context is request-scoped. Jev does not see the new assistant reply or the child brief.
 
+Create proposals proceed when required details are known. Contact email, invoice reference, and invoice due date are independently optional. Mention them alongside a required clarification or the proposal without an optional-only question. Omitted invoice due dates retain the 14-day default; supplied values and resolved conversation context are preserved.
+
 ## Packages
 
 - `guardrails/` — protect personal data, redact secrets, refuse known phrases, then apply the strict input policy

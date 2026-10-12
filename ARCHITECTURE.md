@@ -24,10 +24,6 @@ sequenceDiagram
   Invoices->>MCP: find_contacts
   MCP->>Xero: Read contacts
   Invoices-->>Orchestrator: Contact missing
-  Orchestrator-->>Nextjs: Ask once for an email
-  User->>Nextjs: skip
-  Nextjs->>FastAPI: Stream chat
-  FastAPI->>Orchestrator: Run turn
   Orchestrator->>MCP: propose_action create_contact
   MCP-->>Nextjs: Pending card
   User->>Nextjs: Confirm
@@ -35,8 +31,8 @@ sequenceDiagram
   FastAPI->>Xero: Create contact
   Nextjs->>FastAPI: Execution result, contact exists
   FastAPI->>Orchestrator: Run turn
-  Orchestrator-->>Nextjs: Ask once for a reference and a due date
-  User->>Nextjs: Reference and due date
+  Orchestrator-->>Nextjs: Explain contact execution result
+  User->>Nextjs: Continue with invoice
   Nextjs->>FastAPI: Stream chat
   FastAPI->>Orchestrator: Run turn
   Orchestrator->>MCP: propose_action create_invoice
@@ -46,7 +42,7 @@ sequenceDiagram
   FastAPI->>Xero: Create invoice
 ```
 
-The chat model is an orchestrator. Its tools are `delegate_task` and `propose_action`. Each run also receives the server's current ISO date so relative dates such as today and tomorrow are resolved before a proposal reaches the confirmation card. The invoices subagent owns `find_contacts`, `find_invoices`, `get_invoice`, `summarize_invoices`, and `compare_invoice_totals`. Contact lookup stays on that agent because this chat uses a contact to invoice them. `propose_action` stays on the orchestrator and inserts a pending row. The child does not propose. Before that proposal, the assistant asks once for optional create fields that were not supplied: an email for a contact, and a reference and due date for an invoice. The person can skip them. The confirmation card still shows those fields as inputs. Confirm accepts a JSON body limited to those fields, merges them into the pending payload, and is the only chat path that writes to Xero. The invoice editor calls the same invoice service when a person clicks Save or Void. Both entry points use the same exact-decimal validation before data can be stored or written: at most 100 lines, quantities through `99999999.9999` with four decimal places, unit amounts through `999999999999.99` with two decimal places, and a pre-tax subtotal through `999999999999.99`. Non-finite values are rejected. The browser mirrors these limits for early feedback, but FastAPI is authoritative, including for values supplied through chat. The service sends validated decimals to Xero as decimal strings so binary floating-point conversion cannot change them. The sidebar links to Invoices, Contacts, and Chat. The contacts page lists names and emails from the demo company.
+The chat model is an orchestrator. Its tools are `delegate_task` and `propose_action`. Each run also receives the server's current ISO date so relative dates such as today and tomorrow are resolved before a proposal reaches the confirmation card. The invoices subagent owns `find_contacts`, `find_invoices`, `get_invoice`, `summarize_invoices`, and `compare_invoice_totals`. Contact lookup stays on that agent because this chat uses a contact to invoice them. `propose_action` stays on the orchestrator and inserts a pending row. The child does not propose. Once required details are known, the assistant proposes immediately, preserving supplied optional fields and omitting missing ones. Contact email, invoice reference, and invoice due date are independently optional. An omitted due date defaults to 14 days from today. Optional fields may be mentioned alongside a required clarification or the proposal, but never cause a separate question. Conversation history resolves follow-ups such as "same contact as last"; an ambiguous contact or missing required line-item detail still requires clarification. The confirmation card shows the optional fields as inputs. Confirm accepts a JSON body limited to those fields, merges them into the pending payload, and is the only chat path that writes to Xero. The invoice editor calls the same invoice service when a person clicks Save or Void. Both entry points use the same exact-decimal validation before data can be stored or written: at most 100 lines, quantities through `99999999.9999` with four decimal places, unit amounts through `999999999999.99` with two decimal places, and a pre-tax subtotal through `999999999999.99`. Non-finite values are rejected. The browser mirrors these limits for early feedback, but FastAPI is authoritative, including for values supplied through chat. The service sends validated decimals to Xero as decimal strings so binary floating-point conversion cannot change them. The sidebar links to Invoices, Contacts, and Chat. The contacts page lists names and emails from the demo company.
 
 `CHAT_SUMMARY_EVERY` defaults to 10. Set it to 0 to send the full transcript every time. Once a thread has 20 stored messages, the oldest 10 are folded into `conversation_summaries.summary` by a tool-free call on the same chat model. Each later block of 10 outside the recent window is folded into that same summary. The summary model is told to stay within 2,000 characters, and a longer reply is trimmed to that budget before it is stored. On every later request the model receives the saved summary plus the messages it does not cover yet. The extra model call runs only when a new block is ready. Personal data in that call is replaced with the same placeholders used for the chat model, and the stored summary keeps the original values.
 
@@ -55,5 +51,7 @@ As a chat turn enters the API, Presidio replaces personal data with numbered pla
 The orchestrator and the invoices agent each have `deterministic.yaml` and `judge.yaml` under `backend/evals/`. The files can hold different cases. Both runs call the configured chat model. Deterministic scoring compares the answer and tool trace with the case expectations. Judge scoring sends the answer to a judge model with that case's rubric. Jev scores live under `backend/evals/jev/`, one package per use. The user-message screen is `user_message/deterministic.yaml`; each case has a latest prompt and may include the same bounded conversation tail used in chat. The eval creates a request-scoped personal-data vault and uses the same prompt-and-history protection helper as production before calling Jev. That run compares the strict-policy action with the expected action. A chat request does none of these.
 
 Later hosting can be a single small machine running these two containers. This milestone does not add a database server, Redis, or a cluster.
+
+Orchestrator evals also accept typed conversation inputs with a latest prompt and prior user/assistant messages. The same-contact regression uses real model message history. One request-scoped personal-data vault protects the entire input and scored output; traces contain only new tool calls and results. Optional-field cases check proposal behavior without requiring a separate skip turn. Eval model usage is bounded and orchestrator cases have a wall-clock timeout.
 
 Langfuse receives traces only when its keys are set. Those traces are the Jev screen and the chat model generations. FastAPI request spans, including the health check, are not exported. The Xero HTTP client is not instrumented, so access tokens stay on the server. Personal data is replaced with placeholders before it is placed in model prompts.

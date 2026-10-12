@@ -17,7 +17,7 @@ Dataset cases must not contain passwords, tokens, or other secrets. Invoice fiel
 - `checks.py` — shared write-claim check
 - `scoring.py` — names for the deterministic dataset and the judge dataset
 - `trace.py` — answer text and the appended tool trace
-- `turn.py` — run one prompt on the fake invoice gateway
+- `turn.py` — run a string prompt or typed conversation input on the fake invoice gateway; protect the latest prompt and prior user/assistant messages with one request-scoped vault, and enforce model usage limits
 
 ## Packages
 
