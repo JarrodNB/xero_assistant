@@ -50,9 +50,9 @@ Primary files: `backend/app/actions/routes.py`, `backend/app/actions/executor.py
 
 ## Phase 2: Preserve existing invoice data during editing
 
-Implementation status: implemented on 12 October 2026. Partial update payloads omit untouched lines, existing line ids and accounting fields are retained, and additions/removals are explicit. Reference clearing uses an empty string. Due-date clearing remains explicitly unsupported. Saved responses reset the form; route generations guard late responses. Unknown line fields and ambiguous discount formats are rejected before writing. Amount edits with explicit tax require Xero because override intent cannot be determined safely. Chat line replacements without identities are rejected with an editor next step; model read results still exclude those identities. Frontend form interaction tests and a frontend lockfile were added. Phases 3–6 remain outstanding.
+Implementation status: implemented on 12 October 2026. Partial update payloads omit untouched lines, existing line ids and accounting fields are retained, and additions/removals are explicit. Reference clearing uses an empty string. Due-date clearing remains explicitly unsupported. Saved responses reset the form; route generations guard late responses. Unknown line fields and ambiguous discount formats are rejected before writing. Amount edits with explicit tax require Xero because override intent cannot be determined safely. Chat line replacements without identities are rejected with an editor next step; model read results still exclude those identities. Frontend form interaction tests and a frontend lockfile were added. Phases 4–6 remain outstanding.
 
-Phase 2 verification: 220 offline backend tests passed with `tests/test_evals.py` excluded; 14 frontend tests passed, including eight actual form interaction cases; the production build and TypeScript checks passed. No live Xero writes or paid evaluations were performed. User-run browser acceptance remains outstanding. Next: Phase 3 evaluation integrity and explicit live-evaluation opt-in.
+Phase 2 verification: 220 offline backend tests passed with `tests/test_evals.py` excluded; 14 frontend tests passed, including eight actual form interaction cases; the production build and TypeScript checks passed. No live Xero writes or paid evaluations were performed. User-run browser acceptance remains outstanding. Phase 3 evaluation integrity and explicit live-evaluation opt-in are recorded below.
 
 Addresses findings 2 and 7.
 
@@ -77,6 +77,10 @@ Primary files: `frontend/app/(app)/invoices/[invoiceNumber]/page.tsx`, `frontend
 - Cover the frontend save payload and form updates with interaction tests. The user performs the local browser acceptance check.
 
 ## Phase 3: Make evaluation results trustworthy and inexpensive by default
+
+Implementation status: delivered for offline verification on 12 October 2026. Shared report validation rejects false/missing assertions, empty/incomplete/duplicate/unexpected cases, and task/case-evaluator/report-evaluator execution errors. All three paid runners require explicit opt-in and retain separate deterministic/judge datasets with mechanical write-integrity checks. Default pytest skips marked paid cases and blocks real PydanticAI and HTTPX requests. Live runs support selected-case smoke checks, concurrency/deadline limits, and allowlisted local JSON artifacts with dataset/prompt hashes, model identifiers, task usage, and latency. Billing cost and judge/Jev usage are explicitly unavailable; model aliases remain mutable until snapshot configuration is selected. README and test/eval instructions replace the older ordinary-pytest live-evaluation requirement.
+
+Phase 3 verification: 244 offline backend tests passed, five paid dataset tests skipped, through a rebuilt Docker backend in Ubuntu WSL with a placeholder OpenAI key and an empty Jev key. Synthetic tests verify the installed Pydantic Evals 2.55.0 failure semantics and artifact privacy. No paid evaluations, live Xero writes, or browser tests ran. Phases 4–6 remain outstanding.
 
 Addresses finding 3 and the review's test-workflow recommendation.
 
@@ -183,7 +187,7 @@ docker compose run --rm --no-deps frontend npm test
 docker compose run --rm --no-deps frontend npm run build
 ```
 
-`npm test` is a planned script and must be added in Phase 6. Before Phase 3 ships, explicitly select offline tests because the current default pytest suite includes paid live evaluations.
+`npm test` was added in Phase 2. Phase 3 makes default pytest offline; use the documented explicit opt-in for paid live evaluations.
 
 Each phase is complete only when its acceptance checks pass and its documentation describes the shipped behavior. Finish with a full offline run and user-run local UI checks for confirming/denying proposals, creating/editing invoices, clearing references, and handling errors. Any live Xero verification uses the Demo Company and explicit confirmation of each write.
 

@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
+from pydantic_evals import increment_eval_metric, set_eval_attribute
 
 from sqlalchemy.orm import sessionmaker
 
@@ -68,6 +69,13 @@ async def run_scored_prompt(
             prepared.prompt, message_history=history,
             usage_limits=UsageLimits(request_limit=12, tool_calls_limit=12, total_tokens_limit=20000),
         )
+        usage = result.usage
+        for name in ("input_tokens", "output_tokens", "requests", "tool_calls"):
+            increment_eval_metric(name, getattr(usage, name))
+        set_eval_attribute("resolved_models", sorted({
+            message.model_name for message in result.new_messages()
+            if isinstance(message, ModelResponse) and message.model_name
+        }))
         return f"{redact_text(str(result.output))}{TRACE_HEADING}{format_tool_trace(result)}"
     finally:
         if guardrail_token is not None:

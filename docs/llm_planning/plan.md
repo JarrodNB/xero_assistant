@@ -54,7 +54,7 @@ The orchestrator and the invoices agent each have a dataset. Pytest scores each 
 
 ### Done when
 
-`pytest` scores both golden files, and a missing or renamed case fails the shape test.
+Superseded by quality-remediation Phase 3: ordinary `pytest` runs offline dataset-shape and report-integrity checks. Paid scoring requires `--live-evals -m live_eval` or runner `--live`; a missing or renamed case still fails the shape test.
 
 ## Phase 4 — Offline LLM judge and the Jev filter
 

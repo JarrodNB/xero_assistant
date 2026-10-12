@@ -22,6 +22,7 @@ from app.mcp_server.server import build_mcp_server
 from evals.checks import DoesNotClaimUnconfirmedWrite
 from evals.orchestrator.evaluators import ExpectedDelegate, PendingProposalEvidence
 from evals.scoring import Scoring
+from evals.reporting import evaluate_dataset, live_cli
 from evals.turn import ConversationInput, run_scored_prompt
 from tests.fakes import FakeInvoiceGateway
 
@@ -36,15 +37,19 @@ def load_orchestrator_dataset(scoring: Scoring) -> Dataset:
             DETERMINISTIC_PATH,
             custom_evaluator_types=[DoesNotClaimUnconfirmedWrite, ExpectedDelegate],
         )
-    return Dataset[str | ConversationInput, str, Any].from_file(
+    dataset = Dataset[str | ConversationInput, str, Any].from_file(
         JUDGE_PATH, custom_evaluator_types=[PendingProposalEvidence],
     )
+    dataset.evaluators.append(DoesNotClaimUnconfirmedWrite())
+    return dataset
 
 
 async def evaluate_orchestrator_dataset(
-    model, directory: Path, *, scoring: Scoring, case_names: set[str] | None = None
+    model, directory: Path, *, scoring: Scoring, case_names: set[str] | None = None, live: bool = False
 ) -> EvaluationReport:
     """Score the orchestrator. Bob's Construction already exists, so a complete invoice can be proposed."""
+    if not live:
+        raise ValueError("Paid evaluations require explicit live=True or CLI --live")
     dataset = load_orchestrator_dataset(scoring)
     if case_names is not None:
         dataset.cases = [case for case in dataset.cases if case.name in case_names]
@@ -58,18 +63,18 @@ async def evaluate_orchestrator_dataset(
         """Answer one orchestrator case without writing to Xero."""
         return await asyncio.wait_for(run_scored_prompt(agent, gateway, directory, prompt), timeout=90)
 
-    return await dataset.evaluate(answer, max_concurrency=2)
+    return await evaluate_dataset(dataset, answer, live=live,
+        dataset_path=DETERMINISTIC_PATH if scoring == "deterministic" else JUDGE_PATH,
+        model=str(model), prompt_paths=[Path("app/chat/prompt.py"), Path("app/chat/guardrails/policy_screen.py")])
 
 
 def main() -> None:
-    """Score the orchestrator deterministic dataset, then the judge dataset."""
-    settings = get_settings()
-    scorings: tuple[Scoring, ...] = ("deterministic", "judge")
-    for scoring in scorings:
-        with tempfile.TemporaryDirectory() as directory:
-            report = asyncio.run(evaluate_orchestrator_dataset(settings.model, Path(directory), scoring=scoring))
-        print(scoring)
-        report.print()
+    """Score one explicitly selected live orchestrator dataset."""
+    args = live_cli()
+    with tempfile.TemporaryDirectory() as directory:
+        asyncio.run(evaluate_orchestrator_dataset(get_settings().model, Path(directory),
+            scoring=args.scoring, case_names=set(args.case_names) if args.case_names else None, live=True))
+    print("Evaluation passed; safe metadata saved under evals/artifacts.")
 
 
 if __name__ == "__main__":

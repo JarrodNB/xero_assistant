@@ -37,3 +37,4 @@ include = ["app*"]
 asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["live_eval: paid provider evaluation; requires --live-evals"]

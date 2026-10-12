@@ -36,6 +36,7 @@ node_modules/
 frontend/out/
 *.tsbuildinfo
 coverage/
+backend/evals/artifacts/
 
 # Local reference material and personal notes.
 docs/pydanticAI/

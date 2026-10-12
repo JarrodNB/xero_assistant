@@ -30,6 +30,7 @@ from app.chat.guardrails.context import current_guardrail_context
 from app.chat.guardrails.pii import current_vault
 from app.config import get_settings
 from evals.checks import DoesNotClaimUnconfirmedWrite
+from evals.reporting import assert_report_integrity
 from evals.invoices.evaluators import ExpectedRead
 from evals.invoices.run import evaluate_invoices_dataset, load_invoices_dataset
 from evals.jev.user_message.run import (
@@ -141,6 +142,7 @@ def test_datasets_keep_their_own_checks() -> None:
         assert dataset.cases
         assert any(isinstance(evaluator, GEval) for evaluator in dataset.evaluators)
         assert not any(isinstance(evaluator, (ExpectedDelegate, ExpectedRead)) for evaluator in dataset.evaluators)
+        assert any(isinstance(evaluator, DoesNotClaimUnconfirmedWrite) for evaluator in dataset.evaluators)
         for case in dataset.cases:
             assert any(isinstance(evaluator, LLMJudge) for evaluator in case.evaluators or [])
     for dataset in (
@@ -261,44 +263,44 @@ def test_pending_proposal_evidence_requires_successful_matching_result() -> None
     assert evaluator.evaluate(_context(invalid_call, {"expect_propose": True})) is False
 
 
+@pytest.mark.live_eval
 @pytest.mark.asyncio
 async def test_orchestrator_deterministic_dataset(tmp_path: Path) -> None:
     """Compare the orchestrator's answer and tool trace with the case expectations."""
-    report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="deterministic")
-    assert report.failures == []
-    assert all(case.assertions and all(item.value is True for item in case.assertions.values()) for case in report.cases)
+    report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="deterministic", live=True)
+    assert_report_integrity(report, [case.name for case in load_orchestrator_dataset("deterministic").cases])
 
 
+@pytest.mark.live_eval
 @pytest.mark.asyncio
 async def test_orchestrator_judge_dataset(tmp_path: Path) -> None:
     """Have a judge model grade the orchestrator against each case rubric."""
-    report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="judge")
-    assert report.failures == []
-    assert all(case.assertions and all(item.value is True for item in case.assertions.values()) for case in report.cases)
+    report = await evaluate_orchestrator_dataset(get_settings().model, tmp_path, scoring="judge", live=True)
+    assert_report_integrity(report, [case.name for case in load_orchestrator_dataset("judge").cases])
 
 
+@pytest.mark.live_eval
 @pytest.mark.asyncio
 async def test_invoices_deterministic_dataset(tmp_path: Path) -> None:
     """Compare the invoices agent's answer and tool trace with the case expectations."""
-    report = await evaluate_invoices_dataset(get_settings().model, tmp_path, scoring="deterministic")
-    assert report.failures == []
-    assert all(case.assertions for case in report.cases)
+    report = await evaluate_invoices_dataset(get_settings().model, tmp_path, scoring="deterministic", live=True)
+    assert_report_integrity(report, [case.name for case in load_invoices_dataset("deterministic").cases])
 
 
+@pytest.mark.live_eval
 @pytest.mark.asyncio
 async def test_jev_user_message_dataset() -> None:
     """Compare the user-message screen with the expected strict-policy action."""
-    report = await evaluate_user_message_dataset()
-    assert report.failures == []
-    assert all(case.assertions for case in report.cases)
+    report = await evaluate_user_message_dataset(live=True)
+    assert_report_integrity(report, [case.name for case in load_user_message_dataset().cases])
 
 
+@pytest.mark.live_eval
 @pytest.mark.asyncio
 async def test_invoices_judge_dataset(tmp_path: Path) -> None:
     """Have a judge model grade the invoices agent against each case rubric."""
-    report = await evaluate_invoices_dataset(get_settings().model, tmp_path, scoring="judge")
-    assert report.failures == []
-    assert all(case.assertions for case in report.cases)
+    report = await evaluate_invoices_dataset(get_settings().model, tmp_path, scoring="judge", live=True)
+    assert_report_integrity(report, [case.name for case in load_invoices_dataset("judge").cases])
 
 
 def _context(output: str, metadata: dict) -> EvaluatorContext:

@@ -66,13 +66,26 @@ docker compose up --build
 
 Open [localhost:3001](http://localhost:3001). The backend runs on port 8000.
 
-To run the backend suite, including live evaluation cases:
+Run the default offline backend suite without provider credentials:
 
 ```bash
-docker compose run --rm --build --no-deps backend pytest
+docker compose run --rm --build --no-deps backend pytest -q
 ```
 
-Until the evaluation workflow is separated, run offline backend checks with `pytest -q --ignore=tests/test_evals.py`. Frontend receipt regressions run without a browser or provider credentials:
+Paid tests use the `live_eval` marker and are skipped unless `--live-evals` is present. Offline tests prohibit real PydanticAI requests and real HTTPX transports. Run a small paid smoke check deliberately, or opt in to all five live datasets:
+
+```bash
+docker compose run --rm --no-deps backend python -m evals.orchestrator.run --live --scoring deterministic --case unpaid_total
+docker compose run --rm --no-deps backend pytest -q --live-evals -m live_eval
+```
+
+The invoices runner supports the same flags. Jev uses `python -m evals.jev.user_message.run --live --case unpaid_total` and requires `TYPESAFE_API_KEY`. Judge runs require `--scoring judge` and use the configured `MODEL` for both answers and judges. Prefer a provider snapshot identifier when measuring regressions; the current model defaults are aliases, so they do not guarantee an immutable snapshot.
+
+Each dataset allows two concurrent cases, 90 seconds per task, and 900 seconds for the whole evaluation including judges. Agent tasks allow 12 requests, 12 tool calls, and 20,000 tokens per case; start with one deterministic case (at most 20,000 task tokens) and review provider billing before expanding. Judge and Jev usage is outside that token budget. A full run selects 62 cases and can incur substantial usage; no live evaluation is run by normal pytest or production chat.
+
+JSON artifacts in `backend/evals/artifacts/` contain dataset/prompt hashes, framework version, configured and observed task models, task usage, assertion outcomes, and latency. They omit prompts, outputs, reasons, and exception text. Cost is recorded as unavailable rather than zero because the runners lack billing data; judge/Jev usage is also unavailable. Artifacts are git-ignored local evidence; delete them after 30 days and retain only reviewed summaries when publishing results. Failed assertions, task/evaluator exceptions, empty reports, duplicate cases, and missing cases all fail the run.
+
+Frontend regressions run without a browser or provider credentials:
 
 ```bash
 docker compose run --rm --no-deps frontend npm test
