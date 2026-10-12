@@ -1,41 +1,73 @@
 # Ledger
 
-Ledger is a financial assistant for the connected Xero demo company. Its first implemented capabilities cover contacts and sales invoices, with room for additional Xero workflows. Interviewers sign in with one shared username and password. The server talks to Xero. The chat can read supported records and propose changes, and each change runs only after its own confirmation.
+### A conversational assistant for Xero
 
-Once required details are known, chat proposes the change immediately. Contact email, invoice reference, and invoice due date are optional; you can supply them in chat or edit them on the confirmation card. An omitted due date defaults to 14 days from today. The assistant asks for missing required details and can use earlier messages to resolve follow-ups such as "same contact as last".
+Ledger lets you ask questions about a company's invoices and turn a request into a change you can review before it reaches Xero. It combines a chat interface with contact browsing and an invoice editor, using Xero's Demo Company for real API integration.
 
-## Development
+I built this project to explore a practical question: **how do you give an AI assistant useful access to financial software while keeping people in control of changes?**
 
-Ledger uses a Next.js frontend, a FastAPI backend, and SQLite. Xero is the source of truth for contacts and invoices. See [ARCHITECTURE.md](ARCHITECTURE.md) for the request flow and confirmation boundary.
+## What you can do
 
-The application runs through Docker Compose. Configuration variables are listed in [.env.example](.env.example).
+- Ask which invoices are overdue, check unpaid totals, or compare invoice totals across two periods.
+- Find a customer or inspect an invoice without navigating Xero manually.
+- Request a new contact or create, update, or void an invoice through chat. Ledger presents a confirmation card before executing each action.
+- Review and edit invoices directly in the UI.
+- Reopen saved conversations and continue with requests such as “use the same contact.”
+
+For example, **“Create an invoice for Bob's Construction for $200 of consulting”** starts with a contact lookup. Once the required details are available, Ledger presents the proposed invoice. You can add a reference or change the due date on the card, then confirm it. If the contact doesn't exist, creating that contact requires its own confirmation first.
+
+## Engineering decisions
+
+**Keep the write boundary in application code.** The model can look up records and propose an action, but it cannot execute a Xero write. FastAPI validates the proposal and handles execution after a person confirms it. The invoice editor uses the same service and validation rules.
+
+**Give agents focused responsibilities.** A PydanticAI orchestrator handles the conversation and proposals. A separate agent handles contact and invoice reads through purpose-specific MCP tools. Neither needs arbitrary database access.
+
+**Treat money as decimal data.** The backend validates quantities, unit prices, and totals with explicit precision and size limits. Decimal values are sent to Xero as strings to avoid rounding introduced by binary floating point.
+
+**Protect data before model calls.** Personal values are replaced with placeholders in prompts, conversation history, and tool results, then restored inside the application. Secrets are masked separately. Deterministic checks and optional Jev screening address malicious input; regression cases include instructions hidden in contact notes.
+
+**Keep the infrastructure small.** Next.js and FastAPI run in two Docker containers. SQLite stores conversations and pending actions; Xero remains the source of truth for contacts and invoices. Older conversation turns are summarized to limit the context sent to the model.
+
+## Stack and architecture
+
+| Layer | Technology |
+| --- | --- |
+| Interface | Next.js, React, TypeScript |
+| API and validation | FastAPI, Pydantic |
+| AI and tools | PydanticAI, MCP, OpenAI; optional Jev screening |
+| Integration | Xero API, OAuth 2.0 |
+| Persistence | SQLite, SQLAlchemy |
+| Development and testing | Docker Compose, pytest, Pydantic Evals |
+| Optional model tracing | Langfuse |
+
+The browser communicates with Next.js, which proxies API requests to FastAPI. The backend owns authentication, agent execution, persistence, and Xero access.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the request flow and confirmation sequence.
+
+## Testing the assistant
+
+The tests cover authentication, action confirmation, invoice validation, Xero OAuth, conversation state, and data redaction. Agent evaluations exercise both individual requests and follow-up conversations.
+
+Evaluation cases include ambiguous or missing details, optional invoice fields, denied actions, prompt injection, and attempts to claim an unconfirmed write succeeded. Deterministic checks inspect tool calls and results alongside model-based judging. A judge's approval alone cannot pass a case that required a proposal the agent never made.
+
+The datasets and evaluation runners are in [backend/evals](backend/evals); API and regression tests are in [backend/tests](backend/tests). Live model evaluations require provider credentials and incur API usage costs.
+
+## Run locally
+
+The project uses Docker Compose. Configure a local `.env` using [.env.example](.env.example); a connected demo needs Xero OAuth credentials and an OpenAI API key.
 
 ```bash
 docker compose up --build
 ```
 
-The frontend is available at http://localhost:3001 and the API at http://localhost:8000. Source trees are mounted into the containers for development reloads.
+Open [localhost:3001](http://localhost:3001). The backend runs on port 8000.
 
-## Tests
+To run the backend suite, including live evaluation cases:
 
 ```bash
 docker compose run --rm --build --no-deps backend pytest
 ```
 
-Pytest scores a deterministic dataset and a judge dataset for the orchestrator, and the same pair for the invoices agent. The files are `deterministic.yaml` and `judge.yaml` in `backend/evals/orchestrator/` and `backend/evals/invoices/`. A case can live in one file. Both runs call the configured chat model. Deterministic scoring compares the answer and tool trace with the case expectations. Judge scoring sends the answer to a judge model with that case's rubric. Jev scores live under `backend/evals/jev/`, one package per use. The user-message screen is `user_message/deterministic.yaml`. That score calls the configured Jev model and compares the strict-policy action with the expected action. There is no judge for that screen. The same scores run from:
+## Project scope
 
-```bash
-docker compose run --rm --no-deps backend python -m evals.orchestrator.run
-docker compose run --rm --no-deps backend python -m evals.invoices.run
-docker compose run --rm --no-deps backend python -m evals.jev.user_message.run
-```
-
-Jev also screens the protected latest user message with its bounded two-message conversation tail on a live chat turn when `TYPESAFE_API_KEY` is set. The chat request does not call a judge.
-
-The orchestrator cases include optional-field defaults, partially supplied fields, required-detail clarification, and a same-contact follow-up with actual message history. Conversation cases provide `prompt` and `previous_messages` (`role`, `content`). The eval protects both with one request-scoped vault before the model receives them, and its tool trace includes only the new turn.
-
-Before each parent and child model request, Ledger protects a copy of model history again using the turn's known personal values. This keeps contact names consistent when detection differs between a sentence and a lookup result. Judge evaluation also checks expected pending proposals mechanically; a judge approval alone cannot prove an action was proposed.
-
-## Optional traces
-
-Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` to send the Jev screen and chat generations to Langfuse Cloud. HTTP request spans are not sent. Invoice amounts can appear in those traces. Personal data is replaced with placeholders before it reaches the model. Passwords, the Xero client secret, and access tokens are redacted and are not instrumented from the Xero HTTP client.
+Ledger is a portfolio project built around one connected Xero Demo Company and shared demo sign-in. Its implemented workflows cover contacts and sales invoices. Production multi-tenant access, broader accounting workflows, and production deployment are outside the current scope.
