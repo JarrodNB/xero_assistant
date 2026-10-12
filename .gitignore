@@ -1,13 +1,50 @@
+# Local environment and credentials; keep the setup template public.
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python environments, caches, and coverage output.
 .venv/
+venv/
 __pycache__/
 .pytest_cache/
-*.pyc
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Runtime databases, SQLite sidecars, and logs.
 *.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
 backend/data/
-frontend/node_modules/
-frontend/.next/
+*.log
+
+# JavaScript dependencies and generated build output.
+node_modules/
+.next/
+frontend/out/
+*.tsbuildinfo
+coverage/
+
+# Local reference material and personal notes.
 docs/pydanticAI/
 additional_notes.txt
 initial_doc.md
 mvp.md
+
+# Operating-system files and accidental terminal captures.
+.DS_Store
+Thumbs.db
+Desktop.ini
+/s -ExecutionPolicy*
