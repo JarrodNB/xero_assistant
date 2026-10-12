@@ -13,7 +13,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.schema import ConversationRow, ConversationSummaryRow, MessageRow, ProposedActionRow, utcnow
@@ -80,10 +81,8 @@ class ActionRepository:
     def ensure_conversation(self, conversation_id: str) -> str:
         """Create the conversation when it does not already exist."""
         with self._session_factory() as session:
-            existing = session.get(ConversationRow, conversation_id)
-            if existing is None:
-                session.add(ConversationRow(id=conversation_id))
-                session.commit()
+            session.execute(insert(ConversationRow).values(id=conversation_id).on_conflict_do_nothing(index_elements=["id"]))
+            session.commit()
         return conversation_id
 
     def list_conversations(self) -> list[ConversationSummary]:
@@ -206,6 +205,22 @@ class ActionRepository:
             raise RuntimeError("Proposed action was not saved.")
         return stored
 
+    def create_ui_action(self, request_id: str, action_type: str, payload: dict, summary: str) -> StoredAction:
+        """Persist one editor write receipt, returning the original on duplicate submission."""
+        action_id = f"ui-{request_id}"
+        conversation_id = "ui-write-receipts"
+        with self._session_factory() as session:
+            session.execute(insert(ConversationRow).values(id=conversation_id).on_conflict_do_nothing(index_elements=["id"]))
+            session.execute(insert(ProposedActionRow).values(
+                id=action_id, conversation_id=conversation_id, action_type=action_type,
+                payload_json=json.dumps(payload), summary=summary, status="pending",
+            ).on_conflict_do_nothing(index_elements=["id"]))
+            session.commit()
+        stored = self.get_action(action_id)
+        if stored is None:
+            raise RuntimeError("Editor write receipt was not saved.")
+        return stored
+
     def get_action(self, action_id: str) -> StoredAction | None:
         """Return one action, or None when the id is unknown."""
         with self._session_factory() as session:
@@ -214,31 +229,56 @@ class ActionRepository:
                 return None
             return _to_stored(row)
 
-    def update_pending_payload(self, action_id: str, payload: dict, summary: str) -> StoredAction | None:
-        """Replace the payload and summary while the action is still pending."""
+    def claim_action(self, action: StoredAction, payload: dict, summary: str) -> StoredAction | None:
+        """Atomically freeze the confirmation payload and claim its pending write."""
         with self._session_factory() as session:
-            row = session.get(ProposedActionRow, action_id)
-            if row is None or row.status != "pending":
+            changed = session.execute(
+                update(ProposedActionRow)
+                .where(
+                    ProposedActionRow.id == action.id,
+                    ProposedActionRow.status == "pending",
+                    ProposedActionRow.updated_at == action.updated_at,
+                )
+                .values(payload_json=json.dumps(payload), summary=summary, status="executing", updated_at=utcnow())
+            )
+            session.commit()
+            if changed.rowcount != 1:
                 return None
-            row.payload_json = json.dumps(payload)
-            row.summary = summary
-            row.updated_at = utcnow()
-            session.commit()
-            session.refresh(row)
-            return _to_stored(row)
+        return self.get_action(action.id)
 
-    def update_action(self, action_id: str, status: str, result: dict) -> StoredAction:
-        """Set the status and result of an existing action."""
+    def transition_action(self, action_id: str, expected_status: str, status: str, result: dict) -> StoredAction | None:
+        """Record a result only when this action is still in the expected state."""
         with self._session_factory() as session:
-            row = session.get(ProposedActionRow, action_id)
-            if row is None:
-                raise KeyError(action_id)
-            row.status = status
-            row.result_json = json.dumps(result)
-            row.updated_at = utcnow()
+            changed = session.execute(
+                update(ProposedActionRow)
+                .where(ProposedActionRow.id == action_id, ProposedActionRow.status == expected_status)
+                .values(status=status, result_json=json.dumps(result), updated_at=utcnow())
+            )
             session.commit()
-            session.refresh(row)
-            return _to_stored(row)
+            if changed.rowcount != 1:
+                return None
+        return self.get_action(action_id)
+
+    def recover_stale_action(self, action_id: str, cutoff: datetime) -> None:
+        """Quarantine an abandoned claim without replaying a potentially successful write."""
+        with self._session_factory() as session:
+            session.execute(
+                update(ProposedActionRow)
+                .where(
+                    ProposedActionRow.id == action_id,
+                    ProposedActionRow.status == "executing",
+                    ProposedActionRow.updated_at < cutoff,
+                )
+                .values(status="unknown", updated_at=utcnow(), result_json=json.dumps({
+                    "action_id": action_id,
+                    "status": "unknown",
+                    "what": "Execution outcome is unknown",
+                    "why": "The server did not record a final result for this write.",
+                    "retryable": False,
+                    "next_step": "Check Xero before proposing another write; this action will not be replayed.",
+                }))
+            )
+            session.commit()
 
 
 def _is_narration(content: str) -> bool:

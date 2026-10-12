@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "tsc --outDir /tmp/ledger-frontend-tests --module commonjs --target ES2022 --skipLibCheck lib/api.ts && node --test tests/*.test.cjs",
     "start": "next start -H 0.0.0.0 -p 3000"
   },
   "dependencies": {

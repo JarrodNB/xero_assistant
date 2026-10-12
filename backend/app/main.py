@@ -4,6 +4,8 @@ Public API:
 - create_app
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -46,8 +48,18 @@ def create_app(
     mcp_server = build_mcp_server()
     chat_agent = agent or build_chat_agent(resolved.model, mcp_server)
 
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        """Release the owned Xero client and database pool when the API stops."""
+        try:
+            yield
+        finally:
+            await xero.aclose()
+            engine.dispose()
+
     app = FastAPI(
         title="Xero Assistant",
+        lifespan=lifespan,
         telemetry={
             "tracing": False,
             "metrics": False,
@@ -90,6 +102,7 @@ def _api_error(_request: Request, error: Exception) -> JSONResponse:
             "why": api_error.why,
             "retryable": api_error.retryable,
             "next_step": api_error.next_step,
+            "outcome_unknown": api_error.outcome_unknown,
         },
     )
 

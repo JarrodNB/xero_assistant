@@ -527,6 +527,12 @@ a.primary {
   color: #8a5a12;
 }
 
+.status-executing,
+.status-unknown {
+  color: var(--ink);
+  border: 1px solid currentColor;
+}
+
 .status-denied,
 .status-failed {
   background: #f8e8e8;

@@ -10,8 +10,8 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from app.actions.executor import execute_action, failure_body
 from app.actions.payloads import apply_optional_overrides
+from app.actions.service import action_payload, existing_action_result, load_action, run_confirmed_action
 from app.auth.routes import require_user
 from app.db.repository import StoredAction
 from app.errors import ApiError
@@ -20,97 +20,50 @@ from app.runtime import AppServices
 router = APIRouter(prefix="/actions", tags=["actions"])
 
 
-def action_payload(action: StoredAction) -> dict[str, object]:
-    """Serialize an action without internal database details beyond its id."""
-    return {
-        "action_id": action.id,
-        "action_type": action.action_type,
-        "summary": action.summary,
-        "status": action.status,
-        "payload": action.payload,
-        "result": action.result,
-    }
-
-
-def _pending_action(request: Request, action_id: str) -> tuple[AppServices, StoredAction]:
-    """Load a pending action for the signed-in user."""
+def _load_action(request: Request, action_id: str) -> tuple[AppServices, StoredAction]:
+    """Authenticate the caller and load the durable write receipt."""
     require_user(request)
     services: AppServices = request.app.state.services
-    action = services.actions.get_action(action_id)
-    if action is None:
-        raise ApiError(
-            404,
-            "Action does not exist",
-            "That confirmation could not be found.",
-            False,
-            "Ask the assistant to propose the action again.",
-        )
-    if action.status != "pending":
-        raise ApiError(
-            409,
-            "Action is already finished",
-            f"This action is {action.status}.",
-            False,
-            "Propose a new action if something else still needs to change.",
-        )
+    action = load_action(services.actions, action_id, request.app.state.settings.action_execution_timeout_seconds)
     return services, action
 
 
 @router.get("/{action_id}")
 def get_action(action_id: str, request: Request) -> dict[str, object]:
     """Return the current status of a proposed action."""
-    require_user(request)
-    services: AppServices = request.app.state.services
-    action = services.actions.get_action(action_id)
-    if action is None:
-        raise ApiError(
-            404,
-            "Action does not exist",
-            "That confirmation could not be found.",
-            False,
-            "Ask the assistant to propose the action again.",
-        )
+    _services, action = _load_action(request, action_id)
     return action_payload(action)
 
 
 @router.post("/{action_id}/confirm")
 async def confirm_action(action_id: str, request: Request) -> dict[str, object]:
     """Execute one pending action after the person confirms it."""
-    services, action = _pending_action(request, action_id)
+    services, action = _load_action(request, action_id)
+    if action.status != "pending":
+        return existing_action_result(action)
     overrides = await _confirm_overrides(request)
+    payload, summary = action.payload, action.summary
     if overrides:
         payload, summary = apply_optional_overrides(action.action_type, action.payload, overrides)
-        updated = services.actions.update_pending_payload(action_id, payload, summary)
-        if updated is None:
-            raise ApiError(
-                409,
-                "Action is already finished",
-                "This action is no longer pending.",
-                False,
-                "Propose a new action if something else still needs to change.",
-            )
-        action = updated
-    try:
-        result = await execute_action(action, services.invoices)
-    except ApiError as error:
-        body = failure_body(action_id, error)
-        services.actions.update_action(action_id, "failed", body)
-        raise ApiError(error.status_code, error.what, error.why, error.retryable, error.next_step) from error
-    result_body = {"action_id": action_id, "summary": action.summary, **result}
-    services.actions.update_action(action_id, "executed", result_body)
-    return result_body
+    return await run_confirmed_action(services, action, payload, summary, request.app.state.settings.action_execution_timeout_seconds)
 
 
 @router.post("/{action_id}/deny")
 def deny_action(action_id: str, request: Request) -> dict[str, object]:
     """Mark one pending action as denied without calling Xero."""
-    services, action = _pending_action(request, action_id)
+    services, action = _load_action(request, action_id)
+    if action.status == "denied":
+        return action_payload(action)
+    if action.status != "pending":
+        raise ApiError(409, "Action cannot be denied", f"This action is {action.status}.", False, "Review its current status; execution cannot be undone by denial.")
     result = {
         "action_id": action_id,
         "status": "denied",
         "summary": action.summary,
     }
-    stored = services.actions.update_action(action_id, "denied", result)
+    stored = services.actions.transition_action(action_id, "pending", "denied", result)
+    if stored is None:
+        raise ApiError(409, "Action cannot be denied", "Another request already claimed this action.", False, "Review its current status.")
     return action_payload(stored)
 
 

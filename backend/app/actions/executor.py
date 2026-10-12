@@ -13,7 +13,7 @@ from app.invoices.records import contact_payload, invoice_payload
 
 
 async def execute_action(action: StoredAction, invoices: InvoiceGateway) -> dict[str, object]:
-    """Run one pending action and return the result body."""
+    """Run one validated action for the caller that owns its execution claim."""
     parsed = parse_action(action.action_type, action.payload)
     try:
         if isinstance(parsed, CreateContactPayload):
@@ -34,7 +34,7 @@ async def execute_action(action: StoredAction, invoices: InvoiceGateway) -> dict
             "Contact does not exist",
             f"No contact is named {error.name}.",
             False,
-            f"Propose create_contact for {error.name}, wait for confirmation, then propose the invoice.",
+            "Choose an existing contact or create it first, then confirm a new invoice action.",
         ) from error
     except InvoiceNotFoundError as error:
         raise ApiError(
@@ -45,7 +45,7 @@ async def execute_action(action: StoredAction, invoices: InvoiceGateway) -> dict
             "Use find_invoices to get the invoice number, then propose the action again.",
         ) from error
     except InvoiceServiceError as error:
-        raise ApiError(409, error.what, error.why, error.retryable, error.next_step) from error
+        raise ApiError(502 if error.outcome_unknown else 409, error.what, error.why, error.retryable, error.next_step, outcome_unknown=error.outcome_unknown) from error
     raise ApiError(422, "Unknown action type", action.action_type, False, "Propose a supported action.")
 
 
@@ -53,7 +53,7 @@ def failure_body(action_id: str, error: ApiError) -> dict[str, object]:
     """Shape a failed execution for the chat card and the stored result."""
     return {
         "action_id": action_id,
-        "status": "failed",
+        "status": "unknown" if error.outcome_unknown else "failed",
         "what": error.what,
         "why": error.why,
         "retryable": error.retryable,

@@ -7,6 +7,7 @@ Public API:
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
     session_https_only: bool = False
+    action_execution_timeout_seconds: float = Field(default=120, gt=0, le=240)
 
 
 @lru_cache

@@ -99,10 +99,11 @@ class XeroInvoiceService:
         contacts = response.get("Contacts") or []
         if not contacts:
             raise InvoiceServiceError(
-                "Contact was not created",
+                "Execution outcome is unknown",
                 "Xero returned no contact.",
-                True,
-                "Propose create_contact again.",
+                False,
+                "Check Xero before proposing another contact; the write outcome is unknown.",
+                outcome_unknown=True,
             )
         return map_contact(contacts[0])
 
@@ -128,10 +129,11 @@ class XeroInvoiceService:
         created = (response.get("Invoices") or [None])[0]
         if not created:
             raise InvoiceServiceError(
-                "Invoice was not created",
+                "Execution outcome is unknown",
                 "Xero returned no invoice.",
-                True,
-                "Propose create_invoice again after checking the contact still exists.",
+                False,
+                "Check Xero before proposing another invoice; the write outcome is unknown.",
+                outcome_unknown=True,
             )
         return map_invoice(created)
 
@@ -159,10 +161,11 @@ class XeroInvoiceService:
         saved = (response.get("Invoices") or [None])[0]
         if not saved:
             raise InvoiceServiceError(
-                "Invoice was not updated",
+                "Execution outcome is unknown",
                 "Xero returned no invoice.",
-                True,
-                "Load the invoice again and propose the update once more.",
+                False,
+                "Check the invoice in Xero before submitting another update.",
+                outcome_unknown=True,
             )
         return map_invoice(saved)
 
@@ -188,10 +191,11 @@ class XeroInvoiceService:
         saved = (response.get("Invoices") or [None])[0]
         if not saved:
             raise InvoiceServiceError(
-                "Invoice was not voided",
+                "Execution outcome is unknown",
                 "Xero returned no invoice.",
-                True,
-                "Load the invoice and try voiding it again.",
+                False,
+                "Check the invoice in Xero before submitting another void request.",
+                outcome_unknown=True,
             )
         return map_invoice(saved)
 
@@ -359,6 +363,14 @@ def _where_clause(status: str | None, date_from: date | None, date_to: date | No
 
 def _from_xero(error: XeroApiError) -> InvoiceServiceError:
     """Hide Xero internals while keeping a useful next step."""
+    if error.outcome_unknown:
+        return InvoiceServiceError(
+            "Execution outcome is unknown",
+            "Xero may have accepted the write, but no reliable result was received.",
+            False,
+            "Check Xero before submitting another write; do not retry automatically.",
+            outcome_unknown=True,
+        )
     if error.message == "Xero is not connected.":
         return InvoiceServiceError(
             "Xero is not connected",

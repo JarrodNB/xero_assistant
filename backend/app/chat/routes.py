@@ -16,6 +16,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.auth.routes import require_user
+from app.actions.service import load_action
 from app.chat.guardrails.context import GuardrailMessage, current_guardrail_context, prepare_guardrail_input
 from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import current_jev, screener_for
@@ -95,6 +96,11 @@ def read_conversation(conversation_id: str, request: Request) -> dict[str, objec
             "Open another conversation from the list.",
         )
     messages, actions = found
+    actions = [
+        load_action(request.app.state.services.actions, action.id, request.app.state.settings.action_execution_timeout_seconds)
+        if action.status == "executing" else action
+        for action in actions
+    ]
     return {
         "id": conversation_id,
         "messages": [_message_payload(message) for message in messages],

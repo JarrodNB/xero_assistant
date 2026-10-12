@@ -4,6 +4,8 @@ TypeScript files here use the header comment in `frontend/AGENTS.md`. Every func
 
 Shared browser and server helpers live here. Pages import these modules instead of calling FastAPI or Xero directly.
 
+`api.ts` retains an editor write UUID in tab-scoped session storage while its outcome is uncertain. Storage contains only a request fingerprint and UUID, never the raw body. Retrying identical values checks the same durable receipt; known success or rejection releases the browser id. Do not add automatic retries of confirmations or start a new id after an uncertain result.
+
 ## Files
 
 - `invoiceLimits.ts` - browser feedback for the backend's authoritative invoice numeric limits

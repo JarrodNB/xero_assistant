@@ -67,6 +67,9 @@ const OPTIONAL_FIELDS: Record<string, OptionalField[]> = {
  * Show a short label on a proposal status pill.
  */
 function statusLabel(status: string): string {
+  if (status === "unknown") {
+    return "Outcome unknown — check Xero";
+  }
   if (!status) {
     return status;
   }
@@ -470,6 +473,17 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
     return fieldDrafts[proposal.action_id] ?? optionalDraft(proposal);
   }
 
+  /** Refresh a write receipt without submitting another confirmation or Xero write. */
+  async function checkStatus(proposal: ProposedAction) {
+    try {
+      const recorded = await apiRequest<{ status: string }>(`/api/backend/actions/${proposal.action_id}`);
+      setStatuses((current) => ({ ...current, [proposal.action_id]: recorded.status }));
+      onActivity();
+    } catch {
+      setCardErrors((current) => ({ ...current, [proposal.action_id]: "The saved status could not be checked. Check Xero before submitting another write." }));
+    }
+  }
+
   /**
    * Keep one optional field on a pending card.
    */
@@ -524,8 +538,16 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           setCardErrors((current) => ({ ...current, [proposal.action_id]: message }));
           return;
         }
-        setStatuses((current) => ({ ...current, [proposal.action_id]: "failed" }));
-        narration = `The user confirmed action ${proposal.action_id}, but execution failed: ${message}. Explain the failure in plain language. Do not repeat this message or the action id.`;
+        let recordedStatus = "unknown";
+        try {
+          const recorded = await apiRequest<{ status: string }>(`/api/backend/actions/${proposal.action_id}`);
+          recordedStatus = recorded.status;
+        } catch {
+          // An unavailable status endpoint cannot establish whether the write succeeded.
+        }
+        setStatuses((current) => ({ ...current, [proposal.action_id]: recordedStatus }));
+        setCardErrors((current) => ({ ...current, [proposal.action_id]: message }));
+        narration = `The user attempted to ${decision} action ${proposal.action_id}. Recorded status: ${recordedStatus}. Request error: ${message}. Explain the recorded status without claiming a write failed or succeeded unless its stored status establishes that. Do not repeat this message or the action id.`;
       }
       followLatest.current = true;
       try {
@@ -586,6 +608,11 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         ) : null}
         {cardErrors[proposal.action_id] ? <p className="error">{cardErrors[proposal.action_id]}</p> : null}
         <span className={`status status-${actionStatus.toLowerCase()}`}>{statusLabel(actionStatus)}</span>
+        {actionStatus === "executing" || actionStatus === "unknown" ? (
+          <button className="secondary" type="button" disabled={cardLocked} onClick={() => void checkStatus(proposal)}>
+            Check status
+          </button>
+        ) : null}
         {pending ? (
           <div className="actions">
             <button className="primary" type="button" disabled={cardLocked} onClick={() => void decide(proposal, "confirm")}>

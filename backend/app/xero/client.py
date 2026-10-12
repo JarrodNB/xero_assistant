@@ -3,9 +3,13 @@
 Public API:
 - XeroClient
 - XeroApiError
+- current_write_key
 """
 
+import asyncio
 import time
+import uuid
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -15,15 +19,19 @@ from app.xero.connection_store import XeroConnection, XeroConnectionStore
 TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 API_ROOT = "https://api.xero.com/api.xro/2.0"
+current_write_key: ContextVar[str | None] = ContextVar("current_write_key", default=None)
+MAX_ATTEMPTS = 3
+MAX_RETRY_DELAY = 2.0
 
 
 class XeroApiError(Exception):
     """Xero rejected a token or accounting request."""
 
-    def __init__(self, status_code: int, message: str) -> None:
-        """Store the HTTP status and a short response body."""
+    def __init__(self, status_code: int, message: str, *, outcome_unknown: bool = False) -> None:
+        """Store a sanitized failure and whether an accounting write may have succeeded."""
         self.status_code = status_code
         self.message = message
+        self.outcome_unknown = outcome_unknown
         super().__init__(message)
 
 
@@ -46,6 +54,7 @@ class XeroClient:
         self._access_token = ""
         self._tenant_id = ""
         self._token_expiry = 0.0
+        self._refresh_lock = asyncio.Lock()
 
     async def aclose(self) -> None:
         """Close the HTTP client when this object created it."""
@@ -70,13 +79,14 @@ class XeroClient:
 
     async def connections(self, access_token: str) -> list[dict[str, Any]]:
         """Return the organisations this access token can use."""
-        response = await self._http.get(
+        response = await self._send(
+            "GET",
             CONNECTIONS_URL,
             headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
         )
         if response.status_code >= 400:
             raise XeroApiError(response.status_code, "Xero did not return a connection.")
-        body = response.json()
+        body = _response_json(response)
         if not isinstance(body, list):
             raise XeroApiError(response.status_code, "Xero returned a connection list that was not a list.")
         return body
@@ -99,27 +109,66 @@ class XeroClient:
     ) -> dict[str, Any]:
         """Send one accounting request with a fresh or cached access token."""
         token, tenant_id = await self._access()
-        response = await self._http.request(
+        is_write = method != "GET"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Xero-Tenant-Id": tenant_id,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if is_write:
+            headers["Idempotency-Key"] = current_write_key.get() or f"ledger-request-{uuid.uuid4()}"
+        response = await self._send(
             method,
             f"{API_ROOT}{path}",
             params=params,
             json=payload,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Xero-Tenant-Id": tenant_id,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
+            outcome_unknown=is_write,
         )
         if response.status_code >= 400:
-            raise XeroApiError(response.status_code, response.text[:500])
-        body = response.json()
+            raise XeroApiError(response.status_code, "Xero rejected the accounting request.", outcome_unknown=is_write and response.status_code >= 500)
+        body = _response_json(response, outcome_unknown=is_write)
         if not isinstance(body, dict):
-            raise XeroApiError(response.status_code, "Xero returned a response that was not an object.")
+            raise XeroApiError(502, "Xero returned an invalid accounting response.", outcome_unknown=is_write)
         return body
+
+    async def _send(self, method: str, url: str, *, outcome_unknown: bool = False, retry: bool = True, **kwargs: Any) -> httpx.Response:
+        """Retry bounded reads or identical keyed writes without replaying OAuth grants."""
+        attempts = MAX_ATTEMPTS if retry else 1
+        started = time.monotonic()
+        uncertain = False
+        for attempt in range(attempts):
+            try:
+                response = await self._http.request(method, url, **kwargs)
+            except httpx.RequestError as error:
+                uncertain = outcome_unknown
+                if attempt + 1 == attempts or time.monotonic() - started > 120:
+                    raise XeroApiError(503, "Xero could not be reached.", outcome_unknown=outcome_unknown) from error
+                await asyncio.sleep(0.25 * 2 ** attempt)
+                continue
+            uncertain = uncertain or (outcome_unknown and response.status_code >= 500)
+            if uncertain and response.status_code >= 400 and (response.status_code < 500 and response.status_code != 429 or attempt + 1 == attempts):
+                raise XeroApiError(response.status_code, "Xero did not provide a reliable write result.", outcome_unknown=True)
+            if response.status_code != 429 and response.status_code < 500:
+                return response
+            if attempt + 1 == attempts or time.monotonic() - started > 120:
+                return response
+            delay = _retry_delay(response, attempt)
+            if delay is None:
+                if uncertain:
+                    raise XeroApiError(response.status_code, "Xero did not provide a reliable write result.", outcome_unknown=True)
+                return response
+            await asyncio.sleep(delay)
+        raise AssertionError("Retry loop must return or raise.")
 
     async def _access(self) -> tuple[str, str]:
         """Return a cached access token, refreshing it with the stored refresh token."""
+        async with self._refresh_lock:
+            return await self._refresh_access()
+
+    async def _refresh_access(self) -> tuple[str, str]:
+        """Refresh inside the lock so concurrent callers cannot race token rotation."""
         if self._access_token and self._tenant_id and self._token_expiry > time.time() + 30:
             return self._access_token, self._tenant_id
         connection = self._store.load()
@@ -145,10 +194,32 @@ class XeroClient:
         """Post a token request and return the JSON body."""
         if not self._client_id or not self._client_secret:
             raise XeroApiError(500, "Xero client id and client secret are not configured.")
-        response = await self._http.post(TOKEN_URL, data=data, auth=(self._client_id, self._client_secret))
+        response = await self._send("POST", TOKEN_URL, data=data, auth=(self._client_id, self._client_secret), retry=False)
         if response.status_code >= 400:
             raise XeroApiError(response.status_code, failure)
-        body = response.json()
+        body = _response_json(response)
         if not isinstance(body, dict) or "access_token" not in body or "refresh_token" not in body:
             raise XeroApiError(response.status_code, "Xero did not return a refresh token.")
         return body
+
+
+def _response_json(response: httpx.Response, *, outcome_unknown: bool = False) -> Any:
+    """Decode JSON without exposing provider bodies to callers or the model."""
+    try:
+        return response.json()
+    except ValueError as error:
+        raise XeroApiError(502, "Xero returned invalid JSON.", outcome_unknown=outcome_unknown) from error
+
+
+def _retry_delay(response: httpx.Response, attempt: int) -> float | None:
+    """Honor short numeric Retry-After values and stop rather than retry too early."""
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            delay = float(retry_after)
+        except ValueError:
+            return None
+        if not 0 <= delay <= MAX_RETRY_DELAY:
+            return None
+        return delay
+    return 0.25 * 2 ** attempt

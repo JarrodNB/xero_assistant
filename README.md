@@ -20,6 +20,8 @@ For example, **“Create an invoice for Bob's Construction for $200 of consultin
 
 **Keep the write boundary in application code.** The model can look up records and propose an action, but it cannot execute a Xero write. FastAPI validates the proposal and handles execution after a person confirms it. The invoice editor uses the same service and validation rules.
 
+**Make confirmations safe to repeat.** SQLite atomically claims each confirmed write and freezes its payload. Repeating a successful confirmation returns its saved result; a competing confirmation or denial cannot execute it again. Editor saves retain a request identifier when their response is lost. Xero requests use bounded retries with the same idempotency key. An uncertain outcome is quarantined for a person to check in Xero before starting another write.
+
 **Give agents focused responsibilities.** A PydanticAI orchestrator handles the conversation and proposals. A separate agent handles contact and invoice reads through purpose-specific MCP tools. Neither needs arbitrary database access.
 
 **Treat money as decimal data.** The backend validates quantities, unit prices, and totals with explicit precision and size limits. Decimal values are sent to Xero as strings to avoid rounding introduced by binary floating point.
@@ -67,6 +69,15 @@ To run the backend suite, including live evaluation cases:
 ```bash
 docker compose run --rm --build --no-deps backend pytest
 ```
+
+Until the evaluation workflow is separated, run offline backend checks with `pytest -q --ignore=tests/test_evals.py`. Frontend receipt regressions run without a browser or provider credentials:
+
+```bash
+docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run build
+```
+
+Confirmed writes have a 120-second execution deadline, configurable with `ACTION_EXECUTION_TIMEOUT_SECONDS` (greater than 0, at most 240). If a card says **Outcome unknown**, check Xero before requesting another change. **Check status** reads the saved receipt and never repeats the write. See [ARCHITECTURE.md](ARCHITECTURE.md) for recovery details and idempotency limits.
 
 ## Project scope
 

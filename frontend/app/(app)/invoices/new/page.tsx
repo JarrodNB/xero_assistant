@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceForm } from "../../../../components/InvoiceForm";
 import { ApiRequestError, apiRequest } from "../../../../lib/api";
@@ -20,11 +20,18 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const [contactName, setContactName] = useState("");
   const [notice, setNotice] = useState("");
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
 
   /**
    * Create only the contact. The invoice save is a separate confirmation.
    */
   async function createContact() {
+    if (creatingRef.current) {
+      return;
+    }
+    creatingRef.current = true;
+    setCreating(true);
     setNotice("");
     try {
       await apiRequest("/api/backend/contacts", {
@@ -34,6 +41,9 @@ export default function NewInvoicePage() {
       setNotice(`Created contact ${contactName}.`);
     } catch (caught) {
       setNotice(caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The contact could not be created.");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
   }
 
@@ -69,8 +79,8 @@ export default function NewInvoicePage() {
           New contact
           <input value={contactName} onChange={(event) => setContactName(event.target.value)} required />
         </label>
-        <button className="secondary" type="submit">
-          Create contact
+        <button className="secondary" type="submit" disabled={creating}>
+          {creating ? "Creating…" : "Create contact"}
         </button>
       </form>
       {notice ? <p className="muted">{notice}</p> : null}

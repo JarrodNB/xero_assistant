@@ -7,7 +7,7 @@
 
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { ApiRequestError } from "../lib/api";
 import {
   MAX_INVOICE_LINES,
@@ -47,12 +47,17 @@ export function InvoiceForm({
   const [due, setDue] = useState(dueDate);
   const [lines, setLines] = useState<LineItem[]>(lineItems);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   /**
    * Save the current form values.
    */
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (savingRef.current) {
+      return;
+    }
     setError("");
     const validationError = validateInvoiceLines(lines);
     if (validationError) {
@@ -60,6 +65,8 @@ export function InvoiceForm({
       return;
     }
     try {
+      savingRef.current = true;
+      setSaving(true);
       await onSubmit({ contactName: name, reference: note, dueDate: due, lineItems: lines });
     } catch (caught) {
       if (caught instanceof ApiRequestError) {
@@ -67,6 +74,9 @@ export function InvoiceForm({
       } else {
         setError("The invoice could not be saved.");
       }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -154,8 +164,8 @@ export function InvoiceForm({
           Add line
         </button>
         {error ? <p className="error">{error}</p> : null}
-        <button className="primary" type="submit">
-          {submitLabel}
+        <button className="primary" type="submit" disabled={saving}>
+          {saving ? "Saving…" : submitLabel}
         </button>
       </div>
     </form>

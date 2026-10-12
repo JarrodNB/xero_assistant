@@ -6,6 +6,8 @@ This package talks to Xero. The browser never receives the client secret, refres
 
 One stored refresh token and tenant serve every interviewer. Invoice and contact mapping belongs in `mapping.py`. Accounting writes are called by the invoice service, not by MCP tools.
 
+Accounting writes carry one idempotency key across bounded identical HTTP retries. A confirmed action derives that key from its durable receipt id. Xero keys expire after six minutes: never replay a completed or uncertain receipt as a new external request. OAuth grants are not automatically retried. Serialize refresh-token rotation, sanitize provider/network errors, and distinguish unknown write outcomes from definite rejection.
+
 ## Files
 
 - `oauth.py` — authorisation URL, scopes, and tenant choice

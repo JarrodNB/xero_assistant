@@ -8,7 +8,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InvoiceForm } from "../../../../components/InvoiceForm";
 import { ApiRequestError, apiRequest } from "../../../../lib/api";
 import { Invoice, LineItem } from "../../../../lib/types";
@@ -42,6 +42,8 @@ export default function EditInvoicePage() {
   const invoiceNumber = decodeURIComponent(params.invoiceNumber);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [error, setError] = useState("");
+  const [voiding, setVoiding] = useState(false);
+  const voidingRef = useRef(false);
 
   useEffect(() => {
     /**
@@ -79,6 +81,11 @@ export default function EditInvoicePage() {
    * Void the invoice. The button is the confirmation.
    */
   async function voidInvoice() {
+    if (voidingRef.current) {
+      return;
+    }
+    voidingRef.current = true;
+    setVoiding(true);
     setError("");
     try {
       const body = await apiRequest<{ invoice: Invoice }>(
@@ -89,6 +96,9 @@ export default function EditInvoicePage() {
       router.refresh();
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The invoice could not be voided.");
+    } finally {
+      voidingRef.current = false;
+      setVoiding(false);
     }
   }
 
@@ -100,8 +110,8 @@ export default function EditInvoicePage() {
     <section>
       <div className="page-header">
         <h1>{invoice.invoice_number}</h1>
-        <button className="danger" type="button" onClick={() => void voidInvoice()}>
-          Void invoice
+        <button className="danger" type="button" disabled={voiding} onClick={() => void voidInvoice()}>
+          {voiding ? "Voiding…" : "Void invoice"}
         </button>
       </div>
       <p className="invoice-meta">
