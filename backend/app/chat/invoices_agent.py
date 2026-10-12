@@ -7,10 +7,12 @@ Public API:
 
 from fastmcp import FastMCP
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
 from app.chat.prompt import INVOICES_PROMPT
+from app.chat.guardrails.redaction import protect_model_history
 
 INVOICE_READ_TOOLS = frozenset(
     {
@@ -34,5 +36,6 @@ def build_invoices_agent(model: str | Model, server: FastMCP) -> Agent:
             "Does not propose writes."
         ),
         instructions=INVOICES_PROMPT,
+        capabilities=[ProcessHistory(protect_model_history)],
         toolsets=[MCPToolset(server).filtered(lambda _ctx, tool: tool.name in allowed)],
     )

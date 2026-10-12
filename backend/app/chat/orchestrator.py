@@ -12,7 +12,7 @@ from pydantic_ai.models import Model
 from pydantic_ai_harness import SubAgent, SubAgents
 
 from app.chat.guardrails import chat_guardrails
-from app.chat.guardrails.redaction import tool_result_guardrail
+from app.chat.guardrails.redaction import protect_model_history, tool_result_guardrail
 from app.chat.invoices_agent import build_invoices_agent
 from app.chat.prompt import SYSTEM_PROMPT, current_date_instruction
 from app.chat.summary import apply_history_summary
@@ -30,6 +30,7 @@ def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
         capabilities=[
             *chat_guardrails(),
             ProcessHistory(apply_history_summary),
+            ProcessHistory(protect_model_history),
             SubAgents(
                 agents=[SubAgent(invoices, max_calls=3)],
                 shared_capabilities=[tool_result_guardrail()],

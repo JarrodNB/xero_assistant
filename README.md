@@ -43,6 +43,8 @@ Jev also screens the protected latest user message with its bounded two-message 
 
 The orchestrator cases include optional-field defaults, partially supplied fields, required-detail clarification, and a same-contact follow-up with actual message history. Conversation cases provide `prompt` and `previous_messages` (`role`, `content`). The eval protects both with one request-scoped vault before the model receives them, and its tool trace includes only the new turn.
 
+Before each parent and child model request, Ledger protects a copy of model history again using the turn's known personal values. This keeps contact names consistent when detection differs between a sentence and a lookup result. Judge evaluation also checks expected pending proposals mechanically; a judge approval alone cannot prove an action was proposed.
+
 ## Optional traces
 
 Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` to send the Jev screen and chat generations to Langfuse Cloud. HTTP request spans are not sent. Invoice amounts can appear in those traces. Personal data is replaced with placeholders before it reaches the model. Passwords, the Xero client secret, and access tokens are redacted and are not instrumented from the Xero HTTP client.

@@ -20,7 +20,7 @@ from app.config import get_settings
 from app.invoices.records import ContactRecord
 from app.mcp_server.server import build_mcp_server
 from evals.checks import DoesNotClaimUnconfirmedWrite
-from evals.orchestrator.evaluators import ExpectedDelegate
+from evals.orchestrator.evaluators import ExpectedDelegate, PendingProposalEvidence
 from evals.scoring import Scoring
 from evals.turn import ConversationInput, run_scored_prompt
 from tests.fakes import FakeInvoiceGateway
@@ -36,7 +36,9 @@ def load_orchestrator_dataset(scoring: Scoring) -> Dataset:
             DETERMINISTIC_PATH,
             custom_evaluator_types=[DoesNotClaimUnconfirmedWrite, ExpectedDelegate],
         )
-    return Dataset[str | ConversationInput, str, Any].from_file(JUDGE_PATH)
+    return Dataset[str | ConversationInput, str, Any].from_file(
+        JUDGE_PATH, custom_evaluator_types=[PendingProposalEvidence],
+    )
 
 
 async def evaluate_orchestrator_dataset(

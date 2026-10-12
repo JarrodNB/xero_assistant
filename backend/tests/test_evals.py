@@ -14,6 +14,7 @@ Public API:
 - test_unconfirmed_write_claim_evaluator
 - test_tool_trace_excludes_historical_calls
 - test_tool_trace_keeps_redacted_payload_parseable
+- test_pending_proposal_evidence_requires_successful_matching_result
 """
 
 import json
@@ -38,7 +39,7 @@ from evals.jev.user_message.run import (
     load_user_message_dataset,
     screen_user_message_input,
 )
-from evals.orchestrator.evaluators import ExpectedDelegate
+from evals.orchestrator.evaluators import ExpectedDelegate, PendingProposalEvidence
 from evals.orchestrator.run import evaluate_orchestrator_dataset, load_orchestrator_dataset
 from evals.trace import TRACE_HEADING, format_tool_trace
 
@@ -243,6 +244,21 @@ def test_tool_trace_keeps_redacted_payload_parseable() -> None:
     assert "prior@example.com" not in trace
     assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in trace
     assert "[redacted_email:" in restored_payload["email"]
+
+
+def test_pending_proposal_evidence_requires_successful_matching_result() -> None:
+    """Freeform pending claims, errors, and mismatched action types cannot pass the integrity gate."""
+    evaluator = PendingProposalEvidence()
+    call = 'call propose_action {"action_type": "create_contact", "payload_json": "{}"}\n'
+    result = {"ok": True, "kind": "proposed_action", "status": "pending", "action_id": "synthetic-action", "action_type": "create_contact", "payload": {"name": "Cedar Demo Supplies"}}
+    output = f"Please confirm.{TRACE_HEADING}{call}result propose_action {json.dumps(result)}"
+    assert evaluator.evaluate(_context(output, {"expect_propose": True})) is True
+    for rejected in ("pending", {**result, "ok": False}, {**result, "action_type": "create_invoice"}, {**result, "action_id": ""}):
+        output = f"Please confirm.{TRACE_HEADING}{call}result propose_action {json.dumps(rejected)}"
+        assert evaluator.evaluate(_context(output, {"expect_propose": True})) is False
+    assert evaluator.evaluate(_context(f"Pending.{TRACE_HEADING}{call}", {"expect_propose": True})) is False
+    invalid_call = f"Pending.{TRACE_HEADING}call propose_action []\nresult propose_action {json.dumps(result)}"
+    assert evaluator.evaluate(_context(invalid_call, {"expect_propose": True})) is False
 
 
 @pytest.mark.asyncio

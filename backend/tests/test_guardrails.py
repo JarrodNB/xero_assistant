@@ -17,12 +17,15 @@ Public API:
 - test_passing_jev_still_redacts_the_card
 - test_strict_policy_matches_the_jev_cookbook
 - test_secret_is_redacted_before_the_model_sees_it
+- test_known_person_value_is_protected_in_every_context
+- test_history_refresh_preserves_originals_and_nested_json
+- test_history_refresh_learns_later_values_without_aliasing
 """
 
 import json
 
 import pytest
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import OutputGuardrail
 from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
@@ -39,11 +42,74 @@ from app.chat.guardrails.context import (
 )
 from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import REFUSAL, SUPPORT, current_jev, route
-from app.chat.guardrails.redaction import redact_text, tool_result_guardrail
+from app.chat.guardrails.redaction import protect_model_history, redact_text, tool_result_guardrail
 from app.mcp_server.server import build_mcp_server
 
 CARD = "4111111111111111"
 API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"
+
+
+def test_known_person_value_is_protected_in_every_context() -> None:
+    """A tool-discovered personal value is masked in contexts where NER initially missed it."""
+    vault = PiiVault()
+    prompt = "Create an invoice for Bob's Construction for $55 for Labour. Reference PO-9."
+    assert vault.protect_text(prompt) == prompt
+    contact = vault.protect_text("Bob's Construction")
+    assert contact == "[redacted_person:1]'s Construction"
+    protected = vault.protect_text(prompt)
+    assert contact in protected
+    assert "Bob" not in protected
+    assert vault.restore_text(protected) == prompt
+    other_names = vault.protect_text("Bobcat and Bobby")
+    assert "[redacted_person:1]" not in other_names
+    assert vault.restore_text(other_names) == "Bobcat and Bobby"
+    assert vault.protect_text(contact) == contact
+    assert "Other Construction" != vault.restore_text(contact)
+
+
+def test_history_refresh_preserves_originals_and_nested_json() -> None:
+    """Provider history reuses discovered values while trusted originals stay unchanged."""
+    vault = PiiVault()
+    vault.protect_text("Bob's Construction")
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="Create an invoice for Bob's Construction for $55 for Labour.")]),
+        ModelResponse(parts=[ToolCallPart(tool_name="propose_action", args={
+            "action_type": "create_invoice",
+            "payload_json": json.dumps({"contact_name": "Bob's Construction", "email": "bob@example.com"}),
+        })]),
+    ]
+    token = current_vault.set(vault)
+    try:
+        protected = protect_model_history(messages)
+    finally:
+        current_vault.reset(token)
+    assert "Bob's Construction" in messages[0].parts[0].content
+    assert "Bob's Construction" not in protected[0].parts[0].content
+    payload = json.loads(protected[1].parts[0].args_as_dict()["payload_json"])
+    assert payload["contact_name"] == "[redacted_person:1]'s Construction"
+    assert "bob@example.com" not in payload["email"]
+    assert vault.restore_value(payload) == {"contact_name": "Bob's Construction", "email": "bob@example.com"}
+
+
+def test_history_refresh_learns_later_values_without_aliasing() -> None:
+    """Later isolated detections protect earlier missed names without merging unrelated names."""
+    vault = PiiVault()
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="Create an invoice for Bob's Construction for $55 for Labour.")]),
+        ModelResponse(parts=[TextPart(content="Bob's Construction")]),
+        ModelResponse(parts=[ToolCallPart(tool_name="propose_action", args={"payload_json": {"name": "Bobby"}})]),
+    ]
+    token = current_vault.set(vault)
+    try:
+        protected = protect_model_history(messages)
+    finally:
+        current_vault.reset(token)
+    assert "[redacted_person:1]'s Construction" in protected[0].parts[0].content
+    assert "Bob's Construction" in messages[0].parts[0].content
+    payload = protected[2].parts[0].args_as_dict()["payload_json"]
+    assert isinstance(payload, dict)
+    assert payload["name"] != "[redacted_person:1]"
+    assert vault.restore_value(payload) == {"name": "Bobby"}
 
 
 class _ScriptedJev:

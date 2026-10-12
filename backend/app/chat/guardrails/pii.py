@@ -94,6 +94,7 @@ class PiiVault:
         """Replace personal data in one string, reusing a placeholder for the same value."""
         if not value or _PLACEHOLDER.fullmatch(value):
             return value
+        value = self._protect_known_values(value)
         masked, hidden = _mask_placeholders(value)
         spans = [span for span in _resolve_overlaps(_detections(masked)) if _keep_span(masked, span)]
         updated = masked
@@ -104,6 +105,17 @@ class PiiVault:
             token = self._token(span.entity_type, raw)
             updated = updated[: span.start] + token + updated[span.end :]
         return _unmask(updated, hidden)
+
+    def _protect_known_values(self, value: str) -> str:
+        """Reuse known exact sensitive values before context-dependent entity recognition."""
+        if not self._by_token:
+            return value
+        by_value = {raw: token for token, raw in reversed(self._by_token.items())}
+        choices = "|".join(re.escape(raw) for raw in sorted(by_value, key=len, reverse=True))
+        pattern = re.compile(r"(?<!\w)(?:" + choices + r")(?!\w)")
+        masked, hidden = _mask_placeholders(value)
+        protected = pattern.sub(lambda match: by_value[match.group(0)], masked)
+        return _unmask(protected, hidden)
 
     def restore_text(self, value: str) -> str:
         """Put the original personal data back into one string."""

@@ -14,9 +14,11 @@ Public API:
 - test_scored_history_is_protected
 - test_required_amount_still_needs_clarification
 - test_contact_without_email_proposes
+- test_lookup_refreshes_parent_provider_identity
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,7 @@ from app.chat.guardrails.context import current_guardrail_context
 from app.db.repository import ActionRepository
 from app.db.schema import create_engine_for
 from app.mcp_server.server import build_mcp_server
+from app.invoices.records import ContactRecord
 from app.runtime import AppServices, current_conversation_id, current_services
 from evals.invoices.scripted import scripted_invoices_model
 from evals.orchestrator.scripted import scripted_orchestrator_model
@@ -226,6 +229,44 @@ async def test_contact_without_email_proposes(tmp_path: Path) -> None:
     assert calls[0].args_as_dict()["action_type"] == "create_contact"
     assert json.loads(calls[0].args_as_dict()["payload_json"]) == {"name": "Cedar Demo Supplies"}
     assert "pending" in _tool_returns(result, "propose_action")[0]
+
+
+@pytest.mark.asyncio
+async def test_lookup_refreshes_parent_provider_identity(tmp_path: Path) -> None:
+    """A tool-discovered protected name matches the original request on the parent's next model call."""
+    from pydantic_ai.messages import UserPromptPart
+
+    seen: list[str] = []
+
+    def respond(messages, info):  # type: ignore[no-untyped-def]
+        """Simulate a contact read and capture the refreshed parent history."""
+        tools = {tool.name for tool in info.function_tools}
+        returned = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+        returned_text = "\n".join(str(part.content) for part in returned)
+        if "propose_action" not in tools:
+            if not returned:
+                return ModelResponse(parts=[ToolCallPart(tool_name="find_contacts", args={"name": "Bob's Construction"}, tool_call_id="lookup")])
+            contact = re.search(r"\[redacted_person:\d+\]'s Construction", returned_text)
+            assert contact is not None
+            return ModelResponse(parts=[TextPart(content=f"The contact is {contact.group(0)}.")])
+        if not returned:
+            return ModelResponse(parts=[ToolCallPart(tool_name="delegate_task", args={"agent_name": "invoices", "task": "Find Bob's Construction."}, tool_call_id="delegate")])
+        prompts = [part.content for message in messages for part in message.parts if isinstance(part, UserPromptPart)]
+        prompt_text = "\n".join(prompts)
+        seen.append(prompt_text)
+        contact = re.search(r"\[redacted_person:\d+\]'s Construction", prompt_text)
+        assert contact is not None
+        assert "Bob's Construction" not in prompt_text
+        assert contact.group(0) in returned_text
+        return ModelResponse(parts=[TextPart(content="Nothing was created.")])
+
+    gateway = FakeInvoiceGateway()
+    gateway.contacts.append(ContactRecord(name="Bob's Construction", email="bob@example.com"))
+    await run_scored_prompt(
+        build_chat_agent(FunctionModel(respond), build_mcp_server()), gateway, tmp_path,
+        "Create an invoice for Bob's Construction for $55 for Labour.",
+    )
+    assert len(seen) == 1
 
 
 @pytest.mark.asyncio

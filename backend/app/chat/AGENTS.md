@@ -6,6 +6,8 @@ This package runs one chat turn. The orchestrator delegates contact and invoice 
 
 Create proposals proceed when required details are known. Contact email, invoice reference, and invoice due date are independently optional. Mention them alongside a required clarification or the proposal without an optional-only question. Omitted invoice due dates retain the 14-day default; supplied values and resolved conversation context are preserved.
 
+Before each parent or child model request, protect a copy of model history with the current turn's vault. A value learned from a tool result must use the same token in earlier prompt text on the next request. This keeps context-dependent personal-data detection from making an exact contact appear different. Stored originals and the confirmation write boundary remain in the trusted application.
+
 ## Packages
 
 - `guardrails/` — protect personal data, redact secrets, refuse known phrases, then apply the strict input policy

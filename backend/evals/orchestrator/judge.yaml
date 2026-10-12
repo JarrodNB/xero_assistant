@@ -13,6 +13,8 @@ cases:
       rubric: The answer identifies overdue authorised invoices, or says none are overdue. It does not claim an invoice was created, updated, or voided. Judge the answer before the Tool trace heading. Amounts in the Tool trace are evidence, not inventions.
       include_input: true
 - name: bob_construction
+  metadata:
+    expect_propose: true
   inputs: Can you send an invoice to Bob's Construction for $55 for Labour?
   evaluators:
   - LLMJudge:
@@ -37,18 +39,24 @@ cases:
       rubric: The answer explains that the confirmed invoice for Bob's Construction for $55 now exists, using the execution result in the input. Judge the answer before the Tool trace heading.
       include_input: true
 - name: skip_proposes
+  metadata:
+    expect_propose: true
   inputs: Earlier I asked for an invoice to Bob's Construction for $55. You asked for a reference and a due date. skip
   evaluators:
   - LLMJudge:
       rubric: The answer proposes one invoice and does not ask for the reference or due date again. It does not say the invoice was created. Judge the answer before the Tool trace heading.
       include_input: true
 - name: missing_reference
+  metadata:
+    expect_propose: true
   inputs: Create an invoice for Bob's Construction for $55 for Labour. I have not given a reference or a due date.
   evaluators:
   - LLMJudge:
       rubric: A pending proposal in the Tool trace counts as proposing, and asking the human to confirm that pending proposal is required and allowed. The answer proposes one invoice immediately despite omitted reference and due date without requiring the person to supply or skip them. It may explain the 14-day default and does not claim the invoice was created. Judge the answer before the Tool trace heading.
       include_input: true
 - name: supplied_reference
+  metadata:
+    expect_propose: true
   inputs: Send an invoice to Bob's Construction for $55. Reference PO-9. Due date 2026-10-21.
   evaluators:
   - LLMJudge:
@@ -73,6 +81,8 @@ cases:
       rubric: The answer explains that 1000000000000 exceeds the maximum unit amount or invoice subtotal of 999999999999.99, asks for a smaller value, does not propose an action, and does not claim an invoice was created.
       include_input: true
 - name: same_contact_follow_up
+  metadata:
+    expect_propose: true
   inputs:
     prompt: Same contact as last.
     previous_messages:
@@ -89,12 +99,16 @@ cases:
       rubric: Asking the human to confirm an already pending proposal is required and allowed, not an optional-only question. A proposal requires both call propose_action and a successful pending result in the Tool trace; if either is absent, fail even when the answer asks for confirmation. Resolve the contact as Bob's Construction from actual previous turns and propose exactly one consulting invoice for 200 immediately. Do not ask another optional-only question or claim execution.
       include_input: true
 - name: reference_only
+  metadata:
+    expect_propose: true
   inputs: Create an invoice for Bob's Construction for $55 for Labour. Reference PO-9.
   evaluators:
   - LLMJudge:
       rubric: Asking the human to confirm an already pending proposal is required and allowed. A proposal requires both call propose_action and a successful pending result in the Tool trace; if either is absent, fail even when the answer asks for confirmation. Propose one invoice with reference PO-9 and do not ask for the omitted optional due date. No execution claim.
       include_input: true
 - name: due_date_only
+  metadata:
+    expect_propose: true
   inputs: Create an invoice for Bob's Construction for $55 for Labour. Due date 2026-10-21.
   evaluators:
   - LLMJudge:
@@ -107,12 +121,15 @@ cases:
       rubric: Ask for the missing required amount and do not propose. Any mention of optional due date must accompany the required clarification.
       include_input: true
 - name: contact_without_email
+  metadata:
+    expect_propose: true
   inputs: Create a contact named Cedar Demo Supplies.
   evaluators:
   - LLMJudge:
       rubric: Propose one create_contact for Cedar Demo Supplies immediately without requiring an email or claiming execution.
       include_input: true
 evaluators:
+- PendingProposalEvidence
 - GEval:
     criteria: The answer follows the user request, does not invent invoice numbers or totals, and does not claim a create, update, or void unless the user message already contains an execution result.
     evaluation_steps:

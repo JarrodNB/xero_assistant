@@ -11,6 +11,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCall
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from evals.invoices.scripted import scripted_respond as invoices_respond
+from app.chat.guardrails.pii import current_vault
 
 _CALLS = 0
 
@@ -26,6 +27,9 @@ def scripted_respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResp
     if "propose_action" not in tools:
         return invoices_respond(messages, info)
     user = _latest_user_text(messages)
+    vault = current_vault.get()
+    if vault is not None:
+        user = vault.restore_text(user)
     if "same contact as last" in user.casefold():
         user = " ".join(
             str(part.content)
@@ -33,6 +37,8 @@ def scripted_respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResp
             for part in getattr(message, "parts", [])
             if isinstance(part, UserPromptPart)
         )
+        if vault is not None:
+            user = vault.restore_text(user)
     called = _called_tools(messages)
     return _parent_turn(user, called)
 

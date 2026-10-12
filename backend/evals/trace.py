@@ -50,7 +50,7 @@ def format_tool_trace(result: object) -> str:
                         pass
                 lines.append(f"call {part.tool_name} {_args_text(protected_args)}")
             elif isinstance(part, ToolReturnPart):
-                lines.append(f"result {part.tool_name} {_trace_text(vault, str(part.content))}")
+                lines.append(f"result {part.tool_name} {_args_text(_protected_value(vault, part.content))}")
     return "\n".join(lines)
 
 

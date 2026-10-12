@@ -6,6 +6,8 @@ Python files here use the module docstring in `backend/AGENTS.md`. Every functio
 
 Optional-field regressions cover omitted and partially supplied invoice fields, required-detail clarification, contact email, and a same-contact follow-up. Conversation inputs use `prompt` and `previous_messages` with `role` and `content`; prior turns become actual model history. Scored answers and tool traces are protected, and the tool trace contains only the current turn. Live runs have bounded usage and a per-case timeout. Assert evaluation results are true, rather than only checking that assertion dictionaries exist.
 
+Judge scoring must also verify proposal facts mechanically when a case expects a proposal. A judge's approval cannot replace evidence of one successful pending action in the current turn. Repeated live regressions exercise contact-name protection across lookup and later model requests.
+
 ## Files
 
 - `deterministic.yaml` — orchestrator cases and delegate metadata

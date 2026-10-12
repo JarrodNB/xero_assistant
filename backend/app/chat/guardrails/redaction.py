@@ -6,10 +6,14 @@ Public API:
 - redact_for_trace
 - redact_text
 - tool_result_guardrail
+- protect_model_history
 """
 
 import json
+from copy import deepcopy
 from typing import Any
+
+from pydantic_ai.messages import ModelMessage, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
 
 from pydantic_ai_harness import GuardrailResult, ToolGuardrail
 from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
@@ -55,6 +59,39 @@ def prepare_run_input(run_input: object) -> None:
         return redact_text(text)
 
     rewrite_run_input(run_input, rewrite)
+
+
+def protect_model_history(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Refresh provider history with values learned from tools without changing stored messages."""
+    vault = current_vault.get()
+    if vault is None:
+        return messages
+    protected = deepcopy(messages)
+    _protect_message_parts(protected, vault)
+    _protect_message_parts(protected, vault)
+    return protected
+
+
+def _protect_message_parts(messages: list[ModelMessage], vault: PiiVault) -> None:
+    """Protect message values, allowing a second pass to reuse values learned later in history."""
+    for message in messages:
+        for part in message.parts:
+            if isinstance(part, (TextPart, UserPromptPart)) and isinstance(part.content, str):
+                part.content = redact_text(part.content)
+            elif isinstance(part, ToolCallPart):
+                args = part.args_as_dict()
+                payload = args.get("payload_json")
+                protected_args = _scrub_value({key: value for key, value in args.items() if key != "payload_json"}, vault)
+                if isinstance(payload, str):
+                    try:
+                        protected_args["payload_json"] = json.dumps(_scrub_value(json.loads(payload), vault))
+                    except ValueError:
+                        protected_args["payload_json"] = redact_text(payload)
+                elif "payload_json" in args:
+                    protected_args["payload_json"] = _scrub_value(payload, vault)
+                part.args = protected_args
+            elif isinstance(part, ToolReturnPart):
+                part.content = _scrub_value(part.content, vault)
 
 
 def _restore_tool_args(info: ToolCallInfo) -> GuardrailResult:
