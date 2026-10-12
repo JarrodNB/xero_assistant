@@ -8,6 +8,8 @@ Shared browser and server helpers live here. Pages import these modules instead 
 
 ## Files
 
+- `invoiceEdits.ts` — partial update payloads, intentional reference clearing, line identity/removal tracking, and due-date clearing validation
+
 - `invoiceLimits.ts` - browser feedback for the backend's authoritative invoice numeric limits
 - `api.ts` — session lookup and JSON calls through `/api/backend`
 - `types.ts` — invoice, contact, conversation, and proposed-action shapes

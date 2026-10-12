@@ -10,6 +10,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.invoices.records import ContactRecord, InvoiceRecord, LineItemRecord
+from app.invoices.line_updates import can_edit_lines
 
 
 def map_contact(raw: dict) -> ContactRecord:
@@ -25,6 +26,8 @@ def map_invoice(raw: dict) -> InvoiceRecord:
             description=str(item.get("Description") or ""),
             quantity=_decimal(item.get("Quantity")),
             unit_amount=_decimal(item.get("UnitAmount")),
+            line_item_id=str(item["LineItemID"]) if item.get("LineItemID") else None,
+            has_explicit_tax=item.get("TaxAmount") is not None,
         )
         for item in raw.get("LineItems") or []
     )
@@ -39,6 +42,7 @@ def map_invoice(raw: dict) -> InvoiceRecord:
         currency=str(raw.get("CurrencyCode") or ""),
         reference=raw.get("Reference") or None,
         line_items=line_items,
+        line_editing_supported=can_edit_lines(raw),
     )
 
 

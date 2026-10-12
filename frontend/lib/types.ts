@@ -14,6 +14,8 @@ export type LineItem = {
   description: string;
   quantity: number;
   unit_amount: number;
+  line_item_id?: string | null;
+  has_explicit_tax?: boolean;
 };
 
 export type Invoice = {
@@ -27,6 +29,7 @@ export type Invoice = {
   currency: string;
   reference: string | null;
   line_items?: LineItem[];
+  line_editing_supported?: boolean;
 };
 
 export type Contact = {

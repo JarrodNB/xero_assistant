@@ -34,6 +34,8 @@ class LineItemRecord:
     description: str
     quantity: Decimal
     unit_amount: Decimal
+    line_item_id: str | None = None
+    has_explicit_tax: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ class InvoiceRecord:
     currency: str
     reference: str | None
     line_items: tuple[LineItemRecord, ...] = ()
+    line_editing_supported: bool = True
 
 
 def newest_first(invoices: list[InvoiceRecord]) -> list[InvoiceRecord]:
@@ -70,7 +73,7 @@ def contact_payload(contact: ContactRecord) -> dict[str, object]:
     return {"name": contact.name, "email": contact.email}
 
 
-def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False) -> dict[str, object]:
+def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False, *, include_edit_details: bool = False) -> dict[str, object]:
     """Serialize an invoice for JSON responses."""
     body: dict[str, object] = {
         "invoice_number": invoice.invoice_number,
@@ -84,7 +87,7 @@ def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False) -> dict
         "reference": invoice.reference,
     }
     if include_lines:
-        body["line_items"] = [
+        serialized_lines = [
             {
                 "description": item.description,
                 "quantity": _decimal_number(item.quantity, 4),
@@ -92,4 +95,10 @@ def invoice_payload(invoice: InvoiceRecord, include_lines: bool = False) -> dict
             }
             for item in invoice.line_items
         ]
+        if include_edit_details:
+            body["line_editing_supported"] = invoice.line_editing_supported
+            for serialized, item in zip(serialized_lines, invoice.line_items):
+                serialized.update(line_item_id=item.line_item_id, has_explicit_tax=item.has_explicit_tax)
+                serialized["unit_amount"] = _decimal_number(item.unit_amount, 4)
+        body["line_items"] = serialized_lines
     return body

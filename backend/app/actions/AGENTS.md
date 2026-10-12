@@ -6,6 +6,8 @@ This package is the chat write boundary. `propose_action` only stores a pending 
 
 Confirmation freezes its payload while atomically changing `pending` to `executing`. Denial only changes `pending` to `denied`. Final results are conditional transitions from `executing`; never reset `unknown` or stale claims to `pending`. Repeated confirmation returns an existing result/status without another gateway call. Use the service for editor writes too.
 
+Update lines use `UpdateLineItemPayload`: only editable values plus an invoice-scoped UUID are accepted. Accounting fields come from fresh Xero data. `removed_line_item_ids` makes removals explicit. Missing or null update references leave the existing reference unchanged; an empty string clears it. Omitted/null due dates leave the date unchanged; due-date clearing is not supported in this editor.
+
 ## Files
 
 - `service.py` — atomic claims, bounded execution, durable result replay, and quarantine of uncertain chat/editor writes

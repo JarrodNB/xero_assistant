@@ -82,7 +82,7 @@ async def get_invoice(invoice_number: str, request: Request) -> dict[str, object
         ) from error
     except InvoiceServiceError as error:
         _raise_service_error(error)
-    return {"invoice": invoice_payload(invoice, include_lines=True)}
+    return {"invoice": invoice_payload(invoice, include_lines=True, include_edit_details=True)}
 
 
 @router.post("/invoices")

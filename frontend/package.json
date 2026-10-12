@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "tsc --outDir /tmp/ledger-frontend-tests --module commonjs --target ES2022 --skipLibCheck lib/api.ts && node --test tests/*.test.cjs",
+    "test": "tsc --outDir /tmp/ledger-frontend-tests --rootDir . --module commonjs --target ES2022 --jsx react-jsx --esModuleInterop --skipLibCheck lib/api.ts lib/invoiceEdits.ts components/InvoiceForm.tsx && NODE_PATH=./node_modules node --test tests/*.test.cjs",
     "start": "next start -H 0.0.0.0 -p 3000"
   },
   "dependencies": {
@@ -15,9 +15,11 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.0",
     "@types/node": "^22.15.21",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "jsdom": "26.1.0",
     "typescript": "^5.9.2"
   }
 }

@@ -21,13 +21,13 @@ async def execute_action(action: StoredAction, invoices: InvoiceGateway) -> dict
             return {"status": "executed", "contact": contact_payload(contact)}
         if isinstance(parsed, CreateInvoicePayload):
             invoice = await invoices.create_invoice(parsed)
-            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True)}
+            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True, include_edit_details=action.id.startswith("ui-"))}
         if isinstance(parsed, UpdateInvoicePayload):
             invoice = await invoices.update_invoice(parsed)
-            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True)}
+            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True, include_edit_details=action.id.startswith("ui-"))}
         if isinstance(parsed, VoidInvoicePayload):
             invoice = await invoices.void_invoice(parsed)
-            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True)}
+            return {"status": "executed", "invoice": invoice_payload(invoice, include_lines=True, include_edit_details=action.id.startswith("ui-"))}
     except ContactNotFoundError as error:
         raise ApiError(
             409,

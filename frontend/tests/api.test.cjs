@@ -8,7 +8,7 @@
 const assert = require("node:assert/strict");
 const { test, beforeEach, afterEach } = require("node:test");
 const { webcrypto } = require("node:crypto");
-const { apiRequest, ApiRequestError } = require("/tmp/ledger-frontend-tests/api.js");
+const { apiRequest, ApiRequestError } = require("/tmp/ledger-frontend-tests/lib/api.js");
 
 const originalFetch = globalThis.fetch;
 const originalStorage = globalThis.sessionStorage;

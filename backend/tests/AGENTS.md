@@ -7,6 +7,7 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 ## Files
 
 - `test_write_safety.py` — concurrent claims, denial races, cancellation, deadlines, restart recovery, editor receipt reuse, and Xero retry/error behavior
+- `test_invoice_edits.py` — partial writes, explicit removals, accounting metadata preservation, unsafe-edit rejection, and reference clearing
 
 - `conftest.py` — signed-in API client fixture
 - `fakes.py` — in-memory invoice gateway

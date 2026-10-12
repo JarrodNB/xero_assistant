@@ -17,9 +17,9 @@ Baseline from the review:
 
 ## Phase 1: Make writes safe under concurrency and network failure
 
-Implementation status: delivered for local automated verification on 12 October 2026. Atomic claims, immutable confirmation payloads, durable editor receipts, bounded keyed HTTP retries, write deadlines, uncertain outcomes, restart quarantine, resource cleanup, and mocked backend/frontend regressions are implemented. No new schema is required: existing text statuses and action rows carry the receipts. Reconciliation remains manual, with read-only status checks and documented Xero verification before a new intentional action. Browser acceptance and live Xero checks remain user-run; React interaction coverage remains in Phase 6. Phases 2–6 are not yet implemented.
+Implementation status: delivered for local automated verification on 12 October 2026. Atomic claims, immutable confirmation payloads, durable editor receipts, bounded keyed HTTP retries, write deadlines, uncertain outcomes, restart quarantine, resource cleanup, and mocked backend/frontend regressions are implemented. No new schema is required: existing text statuses and action rows carry the receipts. Reconciliation remains manual, with read-only status checks and documented Xero verification before a new intentional action. Browser acceptance and live Xero checks remain user-run; broader application interaction coverage remains in Phase 6.
 
-Verification: 197 backend tests passed with `tests/test_evals.py` excluded to avoid paid evaluations; six mocked frontend receipt tests passed; the frontend production build passed. No live Xero mutations or provider evaluations were performed. The next implementation phase is preserving existing invoice accounting metadata and intentional reference clearing.
+Phase 1 verification: 197 backend tests passed with `tests/test_evals.py` excluded to avoid paid evaluations; six mocked frontend receipt tests passed; the frontend production build passed. No live Xero mutations or provider evaluations were performed.
 
 Addresses findings 1 and 5. Implement these together because retry behavior depends on knowing whether an external write occurred.
 
@@ -49,6 +49,10 @@ Primary files: `backend/app/actions/routes.py`, `backend/app/actions/executor.py
 - Double submission of an invoice-editor create operation produces one logical write, and the UI shows pending and uncertain outcomes clearly.
 
 ## Phase 2: Preserve existing invoice data during editing
+
+Implementation status: implemented on 12 October 2026. Partial update payloads omit untouched lines, existing line ids and accounting fields are retained, and additions/removals are explicit. Reference clearing uses an empty string. Due-date clearing remains explicitly unsupported. Saved responses reset the form; route generations guard late responses. Unknown line fields and ambiguous discount formats are rejected before writing. Amount edits with explicit tax require Xero because override intent cannot be determined safely. Chat line replacements without identities are rejected with an editor next step; model read results still exclude those identities. Frontend form interaction tests and a frontend lockfile were added. Phases 3–6 remain outstanding.
+
+Phase 2 verification: 220 offline backend tests passed with `tests/test_evals.py` excluded; 14 frontend tests passed, including eight actual form interaction cases; the production build and TypeScript checks passed. No live Xero writes or paid evaluations were performed. User-run browser acceptance remains outstanding. Next: Phase 3 evaluation integrity and explicit live-evaluation opt-in.
 
 Addresses findings 2 and 7.
 
@@ -143,6 +147,8 @@ Primary files: `backend/app/invoices/summary.py`, `backend/app/invoices/gateway.
 - A truncated result cannot produce a definitive total or an assertion that no matching invoice exists.
 
 ## Phase 6: Make builds reproducible and publish evidence of quality
+
+Known dependency follow-up from Phase 2: `npm audit` on 12 October 2026 reported eight advisories (five moderate, three high) in existing runtime dependencies: AI SDK transitive `undici`/`@fastify/busboy`, and Next.js's PostCSS dependency. The installed Testing Library/jsdom test dependencies were not the reported roots. Address these with compatible updates and verify the frontend; do not apply a forced Next.js major upgrade without reviewing migration requirements. A frontend lockfile now exists, but Docker must still be changed to consume it in this phase.
 
 Addresses finding 9 and the review's CI, frontend-test, and resume-presentation recommendations.
 

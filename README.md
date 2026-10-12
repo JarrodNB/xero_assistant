@@ -16,6 +16,8 @@ I built this project to explore a practical question: **how do you give an AI as
 
 For example, **“Create an invoice for Bob's Construction for $200 of consulting”** starts with a contact lookup. Once the required details are available, Ledger presents the proposed invoice. You can add a reference or change the due date on the card, then confirm it. If the contact doesn't exist, creating that contact requires its own confirmation first.
 
+Invoice edits send only changed fields. Clearing the reference is supported; clearing a due date requires Xero. Existing lines keep their identities, accounts, tax, tracking, and supported discount details. The editor explains unsupported line formats and keeps their metadata editable. Amounts on lines with explicit tax must be edited in Xero because Ledger cannot safely identify manual tax overrides. Chat line replacements without existing line identities are rejected; use the invoice editor for those changes.
+
 ## Engineering decisions
 
 **Keep the write boundary in application code.** The model can look up records and propose an action, but it cannot execute a Xero write. FastAPI validates the proposal and handles execution after a person confirms it. The invoice editor uses the same service and validation rules.

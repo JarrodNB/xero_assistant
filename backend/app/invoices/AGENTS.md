@@ -8,8 +8,12 @@ Editor mutations use the shared actions service and durable write receipts. Acce
 
 ## Files
 
+- `line_updates.py` — invoice-scoped line identity validation and preservation of server-owned accounting fields
+
 - `records.py` — contact, invoice, and line-item values shared by Xero, tools, and the UI
 - `gateway.py` — the operation interface and its not-found errors
 - `xero_service.py` — that interface against the connected demo company
 - `summary.py` — unpaid, overdue, and period totals
 - `routes.py` — invoice list, editor, and contact list HTTP routes
+
+Metadata-only updates must omit `LineItems`. Line replacements retain every existing id or explicitly name its removal; unidentified or foreign lines cannot silently replace existing accounting data. Use defaults only for new lines and preserve the original amount convention. Reject unsupported raw fields, ambiguous discounts, and amount changes on lines exposing `TaxAmount` before writing. Editor HTTP serialization includes identities/capabilities; ordinary model tool results do not.

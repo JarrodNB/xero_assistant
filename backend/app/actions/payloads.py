@@ -7,6 +7,7 @@ Public API:
 - MAX_INVOICE_SUBTOTAL
 - CreateContactPayload
 - LineItemPayload
+- UpdateLineItemPayload
 - CreateInvoicePayload
 - UpdateInvoicePayload
 - VoidInvoicePayload
@@ -18,8 +19,9 @@ Public API:
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal, Self
+from uuid import UUID
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.errors import ApiError
 
@@ -77,12 +79,20 @@ class CreateInvoicePayload(BaseModel):
         return self
 
 
+class UpdateLineItemPayload(LineItemPayload):
+    """Editable line values with an optional identity scoped to the current invoice."""
+
+    model_config = ConfigDict(extra="forbid")
+    line_item_id: UUID | None = None
+
+
 class UpdateInvoicePayload(BaseModel):
     """Fields that may change on an existing invoice."""
 
     invoice_number: str = Field(min_length=1, max_length=50)
     contact_name: str | None = Field(default=None, max_length=255)
-    line_items: list[LineItemPayload] | None = Field(default=None, min_length=1, max_length=MAX_LINE_ITEMS)
+    line_items: list[UpdateLineItemPayload] | None = Field(default=None, min_length=1, max_length=MAX_LINE_ITEMS)
+    removed_line_item_ids: list[UUID] = Field(default_factory=list, max_length=MAX_LINE_ITEMS)
     reference: str | None = Field(default=None, max_length=255)
     due_date: date | None = None
 
@@ -98,6 +108,8 @@ class UpdateInvoicePayload(BaseModel):
         """Reject replacement lines whose exact pre-tax total exceeds the application limit."""
         if self.line_items is not None:
             _validate_subtotal(self.line_items)
+        elif self.removed_line_item_ids:
+            raise ValueError("Line removals require the complete remaining line list.")
         return self
 
 

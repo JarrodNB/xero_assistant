@@ -8,6 +8,8 @@ One stored refresh token and tenant serve every interviewer. Invoice and contact
 
 Accounting writes carry one idempotency key across bounded identical HTTP retries. A confirmed action derives that key from its durable receipt id. Xero keys expire after six minutes: never replay a completed or uncertain receipt as a new external request. OAuth grants are not automatically retried. Serialize refresh-token rotation, sanitize provider/network errors, and distinguish unknown write outcomes from definite rejection.
 
+Mapping retains line identities and edit capability flags for the HTTP editor. Raw account, tax, tracking, item, and discount values remain server-owned and are fetched again before line changes. Never infer tax-override intent from the presence of `TaxAmount` or silently change a line's account/tax to the create defaults.
+
 ## Files
 
 - `oauth.py` — authorisation URL, scopes, and tenant choice

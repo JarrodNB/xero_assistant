@@ -11,6 +11,7 @@ from typing import Any
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, LineItemPayload, UpdateInvoicePayload, VoidInvoicePayload
 from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError
 from app.invoices.records import ContactRecord, InvoiceRecord, newest_first
+from app.invoices.line_updates import merge_invoice_lines
 from app.invoices.summary import InvoiceSummary, PeriodComparison, compare_invoice_periods, summarize_invoice_records
 from app.xero.client import XeroApiError, XeroClient
 from app.xero.mapping import map_contact, map_invoice
@@ -152,8 +153,14 @@ class XeroInvoiceService:
         if payload.due_date is not None:
             updated["DueDate"] = payload.due_date.isoformat()
         if payload.line_items is not None:
-            account_code, tax_type = await self._sales_defaults()
-            updated["LineItems"] = [_line_item(item, account_code, tax_type) for item in payload.line_items]
+            lines = merge_invoice_lines(raw, payload)
+            if any(line.line_item_id is None for line in payload.line_items):
+                account_code, tax_type = await self._sales_defaults()
+                for line in lines:
+                    if "LineItemID" not in line:
+                        line.update(AccountCode=account_code, TaxType=tax_type)
+            updated["LineItems"] = lines
+            updated["LineAmountTypes"] = raw["LineAmountTypes"]
         try:
             response = await self._client.post("/Invoices", {"Invoices": [updated]})
         except XeroApiError as error:
