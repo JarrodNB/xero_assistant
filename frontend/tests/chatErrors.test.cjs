@@ -19,6 +19,7 @@ Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, co
 const React = require("react");
 const { render, fireEvent, screen, waitFor, cleanup } = require("@testing-library/react");
 const { ChatPanel } = require("/tmp/ledger-frontend-tests/components/ChatPanel.js");
+const { actionNarration } = require("/tmp/ledger-frontend-tests/lib/actionNarration.js");
 const originalFetch = globalThis.fetch;
 
 /** Restore network and rendered state after every case. */
@@ -94,4 +95,48 @@ test("stopping a reply cancels transport and offers proposal recovery guidance",
   fireEvent.click(screen.getByRole("button", { name: "Stop reply" }));
   await waitFor(() => assert.equal(screen.getByRole("button", { name: "Send" }).disabled, false));
   assert.match(screen.getByRole("alert").textContent, /saved proposals/);
+});
+
+/** Large results keep narration below the smallest supported chat prompt budget. */
+test("outcome narration is bounded and excludes private ids and invoice details", () => {
+  const result = { status: "executed", action_id: "private-receipt", invoice: {
+    invoice_number: "I".repeat(50), total: 999999999999.99, currency: "A".repeat(8),
+    reference: "private-reference".repeat(4000), contact_name: "private-name",
+    line_items: Array.from({ length: 100 }, () => ({ description: "secret line".repeat(4000), line_item_id: "private-line" })),
+  } };
+  const text = actionNarration("confirm", result);
+  assert.ok(text.length <= 256);
+  assert.match(text, /status executed/);
+  assert.match(text, /999999999999.99/);
+  assert.doesNotMatch(text, /private-|secret line/);
+  for (const status of ["pending", "executing", "unknown", "failed", "denied"]) {
+    const narration = actionNarration("deny", { ...result, status });
+    assert.ok(narration.length <= 256);
+    assert.match(narration, new RegExp(`status ${status}`));
+    assert.doesNotMatch(narration, /Total|Invoice|private-/);
+  }
+});
+
+/** Confirm a large saved action through the actual chat component and capture its transport body. */
+test("confirmation sends bounded narration through the chat transport", async () => {
+  let sent;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/confirm")) {
+      return Response.json({ status: "executed", action_id: "receipt-id", invoice: {
+        invoice_number: "INV-42", total: 55, currency: "AUD", reference: "private-reference",
+        line_items: Array.from({ length: 100 }, () => ({ description: "large private line".repeat(500) })),
+      } });
+    }
+    sent = JSON.parse(init.body);
+    return new Response('data: [DONE]\n\n', { headers: { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1" } });
+  };
+  render(React.createElement(ChatPanel, { conversation: "test-chat", transcript: [], onActivity() {}, historyActions: [
+    { kind: "proposed_action", action_id: "receipt-id", action_type: "update_invoice", status: "pending", summary: "Update invoice INV-42.", payload: {} },
+  ] }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => assert.ok(sent));
+  const text = sent.messages.at(-1).parts.find((part) => part.type === "text").text;
+  assert.ok(text.length <= 256);
+  assert.match(text, /INV-42/);
+  assert.doesNotMatch(text, /receipt-id|private/);
 });

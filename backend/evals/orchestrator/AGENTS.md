@@ -10,6 +10,10 @@ Judge scoring must also verify proposal facts mechanically when a case expects a
 
 ## Files
 
+Bounded-confirmation golden and judge cases cover executed outcomes with sparse facts and unknown outcomes that must not claim success/failure or propose replay. Live runs remain opt-in; offline schema checks are not live prompt-quality evidence.
+
+PendingProposalEvidence validates successful pending tool evidence, matching operation, and a structured payload without requiring receipt ids. Provider history and resulting evaluation traces omit those private ids; durable receipt creation and UI routing are covered by deterministic integration tests.
+
 - `deterministic.yaml` — orchestrator cases and delegate metadata
 - `judge.yaml` — orchestrator cases and rubrics
 - `evaluators.py` — delegation and proposal checks

@@ -40,8 +40,6 @@ class PendingProposalEvidence(Evaluator):
             and result.get("status") == "pending"
             and result.get("action_type") == call.get("action_type")
             and call.get("action_type") in {"create_contact", "create_invoice", "update_invoice", "void_invoice"}
-            and isinstance(result.get("action_id"), str)
-            and bool(result["action_id"])
             and isinstance(result.get("payload"), dict)
         )
 

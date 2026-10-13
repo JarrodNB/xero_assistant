@@ -6,6 +6,8 @@ Components in this folder are shared by more than one route. A component used by
 
 Invoice submission has a synchronous in-flight guard. Chat cards use the stored receipt status after an error and offer read-only status checks for executing/unknown actions. A lost HTTP response must never be displayed as proof that an external write failed.
 
+Use actionNarration for every confirm/deny follow-up, including errors. Narrate the recorded status and bounded facts; never submit the entire execution result or receipt id to the model.
+
 An invoice edit validates line values only when lines changed. Unsupported existing lines must not block metadata changes. Disable unsupported line edits and amount edits with explicit tax; explain the available alternatives in the form. Disable fields during saving so a keyed remount from the saved server response cannot discard edits made while saving.
 
 ## Files

@@ -20,12 +20,13 @@ Public API:
 - test_known_person_value_is_protected_in_every_context
 - test_history_refresh_preserves_originals_and_nested_json
 - test_history_refresh_learns_later_values_without_aliasing
+- test_provider_history_excludes_private_ids_without_changing_ui_results
 """
 
 import json
 
 import pytest
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai_harness import OutputGuardrail
 from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
@@ -47,6 +48,21 @@ from app.mcp_server.server import build_mcp_server
 
 CARD = "4111111111111111"
 API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"
+
+
+def test_provider_history_excludes_private_ids_without_changing_ui_results() -> None:
+    """Provider copies omit receipt and line ids while UI tool events keep their routing data."""
+    original = {"action_id": "private-receipt", "payload": {"removed_line_item_ids": ["private-removed"],
+        "line_items": [{"line_item_id": "private-line", "description": "Work"}]}}
+    messages = [ModelRequest(parts=[ToolReturnPart(tool_name="propose_action", content=original)])]
+    token = current_vault.set(PiiVault())
+    try:
+        protected = protect_model_history(messages)
+    finally:
+        current_vault.reset(token)
+    assert "private-" not in json.dumps(protected[0].parts[0].content)
+    assert messages[0].parts[0].content == original
+    assert original["action_id"] == "private-receipt"
 
 
 def test_known_person_value_is_protected_in_every_context() -> None:

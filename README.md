@@ -16,7 +16,7 @@ I built this project to explore a practical question: **how do you give an AI as
 
 For example, **“Create an invoice for Bob's Construction for $200 of consulting”** starts with a contact lookup. Once the required details are available, Ledger presents the proposed invoice. You can add a reference or change the due date on the card, then confirm it. If the contact doesn't exist, creating that contact requires its own confirmation first.
 
-Invoice edits send only changed fields. Clearing the reference is supported; clearing a due date requires Xero. Existing lines keep their identities, accounts, tax, tracking, and supported discount details. The editor explains unsupported line formats and keeps their metadata editable. Amounts on lines with explicit tax must be edited in Xero because Ledger cannot safely identify manual tax overrides. Chat line replacements without existing line identities are rejected; use the invoice editor for those changes.
+Invoice edits send only changed fields. Clearing the reference is supported; clearing a due date requires Xero. Existing lines keep their identities, accounts, tax, tracking, and supported discount details. The editor explains unsupported line formats and keeps their metadata editable. Amounts on lines with explicit tax must be edited in Xero because Ledger cannot safely identify manual tax overrides. Chat line edits use exact original description, quantity, and price selectors. The server resolves unique matches to private Xero identities before proposal; ambiguous or changed lines require reloading or the invoice editor. Confirmation explanations use bounded narration.
 
 ## Engineering decisions
 

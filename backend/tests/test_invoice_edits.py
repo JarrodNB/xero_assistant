@@ -11,17 +11,25 @@ Public API:
 - test_all_original_lines_can_be_explicitly_replaced
 - test_unsupported_lines_do_not_block_metadata_updates
 - test_client_accounting_metadata_is_rejected
+- test_chat_line_proposal_resolves_private_ids_and_confirms
+- test_chat_line_selectors_reject_unsafe_matches
 """
 
 from copy import deepcopy
+import json
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastmcp import Client
 
 from app.actions.payloads import UpdateInvoicePayload
+from app.actions.chat_updates import resolve_chat_update
+from app.errors import ApiError
+from app.mcp_server.server import build_mcp_server
+from app.runtime import current_conversation_id, current_services
 from app.invoices.gateway import InvoiceServiceError
 from app.invoices.records import InvoiceRecord, invoice_payload
 from app.invoices.xero_service import XeroInvoiceService
@@ -208,3 +216,57 @@ def test_client_accounting_metadata_is_rejected() -> None:
 
     with pytest.raises(ValidationError):
         UpdateInvoicePayload(invoice_number="INV-1", line_items=[{**_lines()[0], "AccountCode": "999"}])
+
+
+@pytest.mark.asyncio
+async def test_chat_line_proposal_resolves_private_ids_and_confirms(api) -> None:
+    """A real MCP proposal returns no Xero ids and confirms with preserved accounting data."""
+    client, _gateway = api
+    sign_in(client)
+    service, writes = _service(_original())
+    services = client.app.state.services
+    services.invoices = service
+    services.actions.ensure_conversation("chat-edit")
+    original = [{key: line[key] for key in ("description", "quantity", "unit_amount")} for line in _lines()]
+    payload = {"invoice_number": "INV-1", "line_items": [
+        {**original[0], "original_line": original[0], "description": "Updated work"},
+        {"description": "New", "quantity": 1, "unit_amount": 10},
+    ], "removed_lines": [original[1]]}
+    services_token = current_services.set(services)
+    conversation_token = current_conversation_id.set("chat-edit")
+    try:
+        async with Client(build_mcp_server()) as mcp:
+            result = await mcp.call_tool("propose_action", {"action_type": "update_invoice", "payload_json": json.dumps(payload)})
+    finally:
+        current_conversation_id.reset(conversation_token)
+        current_services.reset(services_token)
+    visible = json.dumps(result.data)
+    assert LINE_A not in visible and LINE_B not in visible
+    assert "line_item_id" not in visible
+    action = services.actions.get_conversation("chat-edit")[1][0]
+    assert action.payload["line_items"][0]["line_item_id"] == LINE_A
+    assert action.payload["removed_line_item_ids"] == [LINE_B]
+    assert writes == []
+    response = client.post(f"/actions/{action.id}/confirm")
+    assert response.status_code == 200
+    assert writes[0]["Invoices"][0]["LineItems"][0]["AccountCode"] == "201"
+    assert writes[0]["Invoices"][0]["LineItems"][0]["Description"] == "Updated work"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["ambiguous", "changed", "missing_selector", "duplicate", "private_id"])
+async def test_chat_line_selectors_reject_unsafe_matches(case) -> None:
+    """Ambiguous, stale, incomplete, duplicated, or identity-bearing inputs cannot resolve."""
+    raw = _original()
+    originals = [{key: line[key] for key in ("description", "quantity", "unit_amount")} for line in _lines()]
+    lines = [{**line, "original_line": deepcopy(line)} for line in originals]
+    if case == "ambiguous":
+        raw["LineItems"][1].update(Description="Work", Quantity=1, UnitAmount=100)
+    if case == "changed": raw["LineItems"][0]["Description"] = "Changed externally"
+    if case == "missing_selector": lines[0].pop("original_line")
+    if case == "duplicate": lines[1] = deepcopy(lines[0])
+    if case == "private_id": lines[0]["original_line"]["line_item_id"] = LINE_A
+    service, writes = _service(raw)
+    with pytest.raises(ApiError):
+        await resolve_chat_update({"invoice_number": "INV-1", "line_items": lines}, service)
+    assert writes == []

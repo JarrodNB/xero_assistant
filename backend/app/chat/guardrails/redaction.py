@@ -91,7 +91,17 @@ def _protect_message_parts(messages: list[ModelMessage], vault: PiiVault) -> Non
                     protected_args["payload_json"] = _scrub_value(payload, vault)
                 part.args = protected_args
             elif isinstance(part, ToolReturnPart):
-                part.content = _scrub_value(part.content, vault)
+                part.content = _scrub_value(_without_internal_ids(part.content), vault)
+
+
+def _without_internal_ids(value: Any) -> Any:
+    """Remove private routing and line identities from provider history, preserving UI events."""
+    if isinstance(value, dict):
+        return {key: _without_internal_ids(item) for key, item in value.items()
+                if key not in {"action_id", "line_item_id", "removed_line_item_ids"}}
+    if isinstance(value, list):
+        return [_without_internal_ids(item) for item in value]
+    return value
 
 
 def _restore_tool_args(info: ToolCallInfo) -> GuardrailResult:

@@ -17,6 +17,7 @@ Public API:
 - test_configured_jev_timeout_fails_closed
 - test_budget_resets_after_cancellation
 - test_closing_route_stream_resets_context_and_stops_provider
+- test_stream_keeps_ui_receipt_while_provider_history_omits_it
 """
 
 import asyncio
@@ -28,7 +29,7 @@ import pytest
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 from pydantic import ValidationError
 from pydantic_ai import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
-from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.function import DeltaToolCall
 from pydantic_ai.usage import RequestUsage
@@ -228,6 +229,32 @@ def _body(text: str = "List invoices") -> dict:
     """Build one valid Vercel request with synthetic content."""
     return {"id": "message", "trigger": "submit-message", "messages": [
         {"id": "message", "role": "user", "parts": [{"type": "text", "text": text}]}]}
+
+
+def test_stream_keeps_ui_receipt_while_provider_history_omits_it(api) -> None:
+    """Streaming cards retain confirmation routing even though model requests omit private ids."""
+    client, _ = api
+    sign_in(client)
+    seen = []
+
+    async def respond(messages, info):
+        """Propose one contact, then inspect the next provider request."""
+        results = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+        if not results:
+            yield {0: DeltaToolCall(name="propose_action", json_args=json.dumps({
+                "action_type": "create_contact", "payload_json": json.dumps({"name": "Synthetic"}),
+            }))}
+        else:
+            seen.extend(results)
+            assert "action_id" not in str(results)
+            yield "The proposal is pending confirmation."
+
+    client.app.state.agent = build_chat_agent(FunctionModel(stream_function=respond), build_mcp_server())
+    response = client.post("/chat", json=_body("Create a contact named Synthetic."), headers={"X-Conversation-Id": "private-routing"})
+    action = client.app.state.services.actions.get_conversation("private-routing")[1][0]
+    assert seen
+    assert action.id in response.text
+    assert "action_id" in response.text
 
 
 @pytest.mark.parametrize("error,expected", [

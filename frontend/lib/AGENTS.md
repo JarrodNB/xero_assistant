@@ -8,6 +8,8 @@ Shared browser and server helpers live here. Pages import these modules instead 
 
 ## Files
 
+- `actionNarration.ts` — bounded confirmation/denial outcome facts, excluding ids, line lists, references, and error diagnostics. Keep narration within the minimum supported 256-character chat prompt budget.
+
 - `invoiceEdits.ts` — partial update payloads, intentional reference clearing, line identity/removal tracking, and due-date clearing validation
 
 - `invoiceLimits.ts` - browser feedback for the backend's authoritative invoice numeric limits

@@ -128,6 +128,24 @@ cases:
   - LLMJudge:
       rubric: Propose one create_contact for Cedar Demo Supplies immediately without requiring an email or claiming execution.
       include_input: true
+- name: bounded_confirmation
+  inputs: The user confirmed action with recorded status executed. Invoice INV-1001. Total 55.00 AUD. Explain this status briefly. Do not propose another action.
+  metadata:
+    execution_result: true
+    expect_propose: false
+  evaluators:
+  - LLMJudge:
+      rubric: Explain that the confirmed action succeeded using only invoice INV-1001 and total 55 AUD. Do not invent contact names, line details, internal ids, or another proposal. Judge the answer before the Tool trace heading.
+      include_input: true
+- name: bounded_unknown_confirmation
+  inputs: The user confirmed action with recorded status unknown. Explain this status briefly. Do not propose another action.
+  metadata:
+    execution_result: false
+    expect_propose: false
+  evaluators:
+  - LLMJudge:
+      rubric: Explain that success or failure is unknown and that Xero should be checked before another write. Do not claim failure or success, invent outcome details, or propose a replay. Judge the answer before the Tool trace heading.
+      include_input: true
 evaluators:
 - PendingProposalEvidence
 - GEval:

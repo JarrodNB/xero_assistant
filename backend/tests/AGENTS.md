@@ -6,6 +6,8 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 
 ## Files
 
+- `test_invoice_edits.py` also covers id-free MCP proposals, deterministic original-value matching, ambiguous/stale selectors, explicit removals/additions, and confirmation against the Xero service. `test_guardrails.py` verifies private ids are removed only from provider-history copies.
+
 - `test_write_safety.py` — concurrent claims, denial races, cancellation, deadlines, restart recovery, editor receipt reuse, and Xero retry/error behavior
 - `test_invoice_edits.py` — partial writes, explicit removals, accounting metadata preservation, unsafe-edit rejection, and reference clearing
 

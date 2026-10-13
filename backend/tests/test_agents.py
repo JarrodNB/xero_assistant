@@ -15,6 +15,7 @@ Public API:
 - test_required_amount_still_needs_clarification
 - test_contact_without_email_proposes
 - test_lookup_refreshes_parent_provider_identity
+- test_proposal_receipt_id_stays_out_of_provider_requests
 """
 
 import json
@@ -39,6 +40,29 @@ from evals.invoices.scripted import scripted_invoices_model
 from evals.orchestrator.scripted import scripted_orchestrator_model
 from evals.turn import ConversationInput, HistoryMessage, run_scored_prompt
 from tests.fakes import FakeInvoiceGateway
+
+
+@pytest.mark.asyncio
+async def test_proposal_receipt_id_stays_out_of_provider_requests(tmp_path: Path) -> None:
+    """The real harness keeps receipt ids in UI results while hiding them on the next model call."""
+    seen = []
+
+    def respond(messages, info):
+        """Propose a contact then inspect the actual provider request history."""
+        results = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+        if not results:
+            return ModelResponse(parts=[ToolCallPart(tool_name="propose_action", args={
+                "action_type": "create_contact", "payload_json": json.dumps({"name": "Synthetic"}),
+            })])
+        seen.extend(results)
+        assert "action_id" not in str(results)
+        return ModelResponse(parts=[TextPart(content="A contact proposal is pending confirmation.")])
+
+    output = await run_scored_prompt(build_chat_agent(FunctionModel(respond), build_mcp_server()),
+                                    FakeInvoiceGateway(), tmp_path, "Create a contact named Synthetic.")
+    assert seen
+    assert "action_id" not in output
+    assert "pending" in output
 
 
 @pytest.mark.asyncio

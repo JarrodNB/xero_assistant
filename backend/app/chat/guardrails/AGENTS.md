@@ -8,6 +8,8 @@ The vault reuses already known raw values before fresh detection, with boundarie
 
 ## Files
 
+Provider-history copies remove action_id, line_item_id, and removed_line_item_ids recursively from structured tool results. Preserve the trusted originals so browser events can still route confirmation cards. Chat updates resolve accounting identities deterministically, never through a model.
+
 - `__init__.py` — wire protection, secret redaction, the known-phrase screen, and the policy screen into `chat_guardrails`
 - `context.py` — protect, type, bound, and format request-scoped conversation context for Jev
 - `pii.py` — Presidio vault, numbered placeholders, and restoring the outbound stream. A person hit that is only an invoice field label, such as a reference, is left as written.

@@ -62,6 +62,8 @@ ORCHESTRATOR_DETERMINISTIC_CASES = (
     "due_date_only",
     "missing_required_amount",
     "contact_without_email",
+    "bounded_confirmation",
+    "bounded_unknown_confirmation",
 )
 
 ORCHESTRATOR_JUDGE_CASES = (
@@ -82,6 +84,8 @@ ORCHESTRATOR_JUDGE_CASES = (
     "due_date_only",
     "missing_required_amount",
     "contact_without_email",
+    "bounded_confirmation",
+    "bounded_unknown_confirmation",
 )
 
 INVOICES_DETERMINISTIC_CASES = (
@@ -252,10 +256,10 @@ def test_pending_proposal_evidence_requires_successful_matching_result() -> None
     """Freeform pending claims, errors, and mismatched action types cannot pass the integrity gate."""
     evaluator = PendingProposalEvidence()
     call = 'call propose_action {"action_type": "create_contact", "payload_json": "{}"}\n'
-    result = {"ok": True, "kind": "proposed_action", "status": "pending", "action_id": "synthetic-action", "action_type": "create_contact", "payload": {"name": "Cedar Demo Supplies"}}
+    result = {"ok": True, "kind": "proposed_action", "status": "pending", "action_type": "create_contact", "payload": {"name": "Cedar Demo Supplies"}}
     output = f"Please confirm.{TRACE_HEADING}{call}result propose_action {json.dumps(result)}"
     assert evaluator.evaluate(_context(output, {"expect_propose": True})) is True
-    for rejected in ("pending", {**result, "ok": False}, {**result, "action_type": "create_invoice"}, {**result, "action_id": ""}):
+    for rejected in ("pending", {**result, "ok": False}, {**result, "action_type": "create_invoice"}, {**result, "payload": None}):
         output = f"Please confirm.{TRACE_HEADING}{call}result propose_action {json.dumps(rejected)}"
         assert evaluator.evaluate(_context(output, {"expect_propose": True})) is False
     assert evaluator.evaluate(_context(f"Pending.{TRACE_HEADING}{call}", {"expect_propose": True})) is False

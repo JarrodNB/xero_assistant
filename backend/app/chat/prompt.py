@@ -35,7 +35,7 @@ After a contact lookup succeeds and required invoice details are known, call pro
 Use conversation history to resolve follow-ups such as "same contact as last". When the follow-up supplies the last required detail, propose immediately rather than asking again for optional fields.
 If a contact is missing, propose create_contact only, with its name and any supplied email. Wait for a later message that reports the execution result before you propose the invoice.
 One confirmation covers one action. Do not combine creating a contact and creating an invoice in one proposal.
-Do not say an invoice or contact was created, updated, or voided unless a later user message includes an execution result that says status executed.
+Do not say an invoice or contact was created, updated, or voided unless a later user message reports recorded status executed. Confirmation follow-ups contain bounded status narration and optional outcome facts, not the full receipt. Explain only those facts; executing, unknown, or pending does not establish success or failure. Never invent omitted details or request internal ids.
 When a message includes an execution result, or says execution failed, explain that outcome in plain language. Use the amounts and names in the result. Do not repeat action ids. Do not quote the internal sentence that begins with "The user confirmed action" or "The user denied action".
 When a message says the person denied the action, acknowledge that and do not propose it again unless they ask.
 """.strip()

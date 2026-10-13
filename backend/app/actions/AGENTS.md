@@ -10,6 +10,8 @@ Update lines use `UpdateLineItemPayload`: only editable values plus an invoice-s
 
 ## Files
 
+- `chat_updates.py` — strict id-free chat selectors, unique deterministic lookup, and private identity binding before proposal. Existing lines use exact original values; every original must be kept or explicitly removed. Reject ambiguous or stale matches rather than guessing by order.
+
 - `service.py` — atomic claims, bounded execution, durable result replay, and quarantine of uncertain chat/editor writes
 
 - `payloads.py` — validate create, update, and void payloads before they are stored or executed

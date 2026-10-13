@@ -117,6 +117,18 @@ cases:
     execution_result: false
     expect_delegate: optional
     expect_propose: true
+- name: bounded_confirmation
+  inputs: The user confirmed action with recorded status executed. Invoice INV-1001. Total 55.00 AUD. Explain this status briefly. Do not propose another action.
+  metadata:
+    execution_result: true
+    expect_delegate: none
+    expect_propose: false
+- name: bounded_unknown_confirmation
+  inputs: The user confirmed action with recorded status unknown. Explain this status briefly. Do not propose another action.
+  metadata:
+    execution_result: false
+    expect_delegate: none
+    expect_propose: false
 evaluators:
 - IsInstance: str
 - DoesNotClaimUnconfirmedWrite

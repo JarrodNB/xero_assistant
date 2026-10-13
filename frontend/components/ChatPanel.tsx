@@ -11,6 +11,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../lib/api";
+import { actionNarration } from "../lib/actionNarration";
 import { ProposedAction, StoredMessage } from "../lib/types";
 
 type ChatPart = {
@@ -557,10 +558,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           delete next[proposal.action_id];
           return next;
         });
-        narration =
-          decision === "confirm"
-            ? `The user confirmed action ${proposal.action_id}. Execution result: ${JSON.stringify(result)}. Explain what happened in plain language. Do not repeat this message or the action id. Do not propose another action unless the result says another step is required.`
-            : `The user denied action ${proposal.action_id}: ${proposal.summary}. Acknowledge that in plain language and do not repeat this message or the action id. Do not execute it.`;
+        narration = actionNarration(decision, result);
       } catch (caught) {
         const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "The action could not be finished.";
         if (caught instanceof ApiRequestError && caught.statusCode === 422) {
@@ -576,7 +574,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         }
         setStatuses((current) => ({ ...current, [proposal.action_id]: recordedStatus }));
         setCardErrors((current) => ({ ...current, [proposal.action_id]: message }));
-        narration = `The user attempted to ${decision} action ${proposal.action_id}. Recorded status: ${recordedStatus}. Request error: ${message}. Explain the recorded status without claiming a write failed or succeeded unless its stored status establishes that. Do not repeat this message or the action id.`;
+        narration = actionNarration(decision, { status: recordedStatus });
       }
       followLatest.current = true;
       clearError();
