@@ -4,7 +4,7 @@ Public API:
 - create_app
 """
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, AsyncExitStack
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.actions.routes import router as actions_router
 from app.auth.routes import router as auth_router
 from app.chat.orchestrator import build_chat_agent
+from app.chat.execution import production_model
 from app.chat.routes import router as chat_router
 from app.config import Settings, get_settings
 from app.db.repository import ActionRepository
@@ -38,7 +39,7 @@ def create_app(
 ) -> FastAPI:
     """Build the API with a session cookie and the invoice routes."""
     resolved = settings or get_settings()
-    configure_observability(resolved)
+    trace_provider = configure_observability(resolved)
     engine = create_engine_for(resolved.database_path)
     session_factory = sessionmaker(bind=engine)
     repository = ActionRepository(session_factory)
@@ -46,16 +47,20 @@ def create_app(
     xero = XeroClient(resolved.xero_client_id, resolved.xero_client_secret, connections, xero_http)  # type: ignore[arg-type]
     gateway = invoices or XeroInvoiceService(xero)
     mcp_server = build_mcp_server()
-    chat_agent = agent or build_chat_agent(resolved.model, mcp_server)
+    ai_model, ai_client = production_model(resolved) if agent is None else (None, None)
+    chat_agent = agent or build_chat_agent(ai_model, mcp_server, resolved)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         """Release the owned Xero client and database pool when the API stops."""
-        try:
+        async with AsyncExitStack() as resources:
+            resources.callback(engine.dispose)
+            if trace_provider is not None:
+                resources.callback(trace_provider.shutdown)
+            resources.push_async_callback(xero.aclose)
+            if ai_client is not None:
+                resources.push_async_callback(ai_client.close)
             yield
-        finally:
-            await xero.aclose()
-            engine.dispose()
 
     app = FastAPI(
         title="Xero Assistant",
@@ -73,6 +78,7 @@ def create_app(
     app.state.xero_connections = connections
     app.state.services = AppServices(invoices=gateway, actions=repository)  # type: ignore[arg-type]
     app.state.agent = chat_agent
+    app.state.ai_model = ai_model
     app.state.mcp_server = mcp_server
     app.add_middleware(
         SessionMiddleware,

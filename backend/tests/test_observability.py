@@ -4,9 +4,11 @@ Public API:
 - test_span_processor_scrubs_before_export
 - test_fastapi_spans_are_not_exported
 - test_redact_value_hides_secrets_and_keeps_invoice_amounts
+- test_real_spans_drop_content_events_and_sensitive_status
 """
 
 from app.observability import RedactingSpanProcessor, looks_sensitive, redact_value
+from app.observability import conversation_pseudonym
 
 
 def test_span_processor_scrubs_before_export() -> None:
@@ -118,3 +120,32 @@ def test_redact_value_hides_secrets_and_keeps_invoice_amounts() -> None:
     assert redact_value("app_password_hash", "$argon2id$v=19$secret") == "[redacted]"
     assert looks_sensitive("note", "Bearer abc") is True
     assert looks_sensitive("invoice_number", "INV-1") is False
+
+
+def test_real_spans_drop_content_events_and_sensitive_status() -> None:
+    """SDK spans export only useful metadata, without prompt bodies or exception diagnostics."""
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import Status, StatusCode
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(RedactingSpanProcessor(SimpleSpanProcessor(exporter)))
+    with provider.get_tracer("pydantic-ai").start_as_current_span("model") as span:
+        span.set_attribute("metadata.customer", "private@example.com")
+        span.set_attribute("customer_phone", 123456789)
+        span.set_attribute("gen_ai.input.messages", "private@example.com and sk-private")
+        span.set_attribute("gen_ai.usage.input_tokens", 20)
+        span.set_attribute("gen_ai.request.model", "gpt-4.1-mini")
+        span.set_attribute("ledger.session", conversation_pseudonym("private@example.com", "secret"))
+        span.add_event("exception", {"exception.message": "private@example.com"})
+        span.set_status(Status(StatusCode.ERROR, "private@example.com provider-secret"))
+    exported = exporter.get_finished_spans()
+    assert len(exported) == 1
+    assert "private@example.com" not in str(exported[0].attributes)
+    assert "customer_phone" not in exported[0].attributes
+    assert exported[0].attributes["gen_ai.usage.input_tokens"] == 20
+    assert not exported[0].events
+    assert exported[0].status.description is None
+    provider.shutdown()

@@ -8,6 +8,8 @@ Public API:
 
 import json
 import uuid
+import asyncio
+from contextlib import ExitStack, aclosing
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -22,6 +24,8 @@ from app.chat.guardrails.pii import OutboundRestorer, PiiVault, current_vault
 from app.chat.guardrails.policy_screen import current_jev, screener_for
 from app.chat.guardrails.redaction import prepare_run_input
 from app.chat.summary import current_history_summary, summarize_with_model, update_stored_summary
+from app.chat.execution import TurnBudget, current_turn_budget, model_settings, public_chat_error, prompt_versions
+from app.observability import conversation_pseudonym, trace_ai_work
 from app.db.repository import StoredAction, StoredMessage
 from app.errors import ApiError
 from app.runtime import current_conversation_id, current_services
@@ -138,91 +142,102 @@ def latest_user_text(body: bytes) -> str:
 
 @router.post("/chat")
 async def chat(request: Request) -> Response:
-    """Stream one assistant turn for the signed-in person."""
+    """Stream one bounded turn, including preparation and recoverable failure events."""
     require_user(request)
-    body = await request.body()
-    accept = request.headers.get("accept", SSE_CONTENT_TYPE)
+    settings = request.app.state.settings
+    deadline = asyncio.get_running_loop().time() + settings.chat_timeout_seconds
     try:
-        run_input = VercelAIAdapter.build_run_input(body)
-    except ValidationError as error:
-        return Response(content=error.json(), media_type="application/json", status_code=422)
-
+        async with asyncio.timeout_at(deadline):
+            body = await request.body()
+            run_input = VercelAIAdapter.build_run_input(body)
+    except (ValidationError, ValueError):
+        return Response(content='{"what":"Invalid chat request"}', media_type="application/json", status_code=422)
+    except TimeoutError:
+        return Response(content='{"what":"Chat request timed out"}', media_type="application/json", status_code=408)
     conversation_id = request.headers.get("x-conversation-id") or str(uuid.uuid4())
     services = request.app.state.services
-    services.actions.ensure_conversation(conversation_id)
     user_text = latest_user_text(body)
-    previous_messages = [
-        message
-        for message in services.actions.list_messages(conversation_id)
-        if message.role in {"user", "assistant"}
-    ][-2:]
-    if user_text:
-        services.actions.add_message(conversation_id, "user", user_text)
+    if len(user_text) > settings.chat_prompt_character_limit:
+        return Response(content='{"what":"Chat message is too long; shorten the request"}',
+                        media_type="application/json", status_code=422)
     vault = PiiVault()
-    vault_token = current_vault.set(vault)
-    try:
+    budget = TurnBudget(settings)
+    adapter = VercelAIAdapter(agent=request.app.state.agent, run_input=run_input,
+                             accept=request.headers.get("accept", SSE_CONTENT_TYPE))
 
-        async def summarize(prompt: str) -> str:
-            """Fold one protected block with the chat model and no tools."""
-            return await summarize_with_model(request.app.state.settings.model, prompt)
-
-        history_summary = await update_stored_summary(
-            services.actions,
-            conversation_id,
-            request.app.state.settings.chat_summary_every,
-            summarize,
-        )
-        prepared_guardrail_input = prepare_guardrail_input(
-            user_text,
-            [
-                GuardrailMessage(
-                    role="assistant" if message.role == "assistant" else "user",
-                    content=message.content,
-                )
-                for message in previous_messages
-            ],
-        )
-        prepare_run_input(run_input)
-    finally:
-        current_vault.reset(vault_token)
-
-    adapter = VercelAIAdapter(agent=request.app.state.agent, run_input=run_input, accept=accept)
-
-    async def on_complete(result) -> None:  # type: ignore[no-untyped-def]
-        """Store the assistant text with personal data restored."""
-        output = getattr(result, "output", "")
-        text = output if isinstance(output, str) else str(output)
+    async def on_complete(result) -> None:
+        """Store only successfully completed assistant text with personal data restored."""
+        text = str(getattr(result, "output", ""))
         if text:
-            services.actions.add_message(conversation_id, "assistant", vault.restore_text(text))
+            await asyncio.to_thread(services.actions.add_message, conversation_id, "assistant", vault.restore_text(text))
 
     async def encode() -> AsyncIterator[str]:
-        """Run the agent while the MCP tools can see this conversation."""
-        services_token = current_services.set(services)
-        conversation_token = current_conversation_id.set(conversation_id)
-        summary_token = current_history_summary.set(history_summary)
-        guardrail_context_token = current_guardrail_context.set(prepared_guardrail_input.context)
-        jev_token = current_jev.set(screener_for(request.app.state.settings))
-        stream_vault = current_vault.set(vault)
-        restorer = OutboundRestorer(vault)
-        try:
-            event_stream = adapter.run_stream(on_complete=on_complete)
-            async for chunk in adapter.encode_stream(event_stream):
-                restored = restorer.push(chunk)
-                if restored:
-                    yield restored
-            tail = restorer.finish()
-            if tail:
-                yield tail
-        finally:
-            current_vault.reset(stream_vault)
-            current_jev.reset(jev_token)
-            current_guardrail_context.reset(guardrail_context_token)
-            current_history_summary.reset(summary_token)
-            current_conversation_id.reset(conversation_token)
-            current_services.reset(services_token)
+        """Bound the complete workflow and reset all request context even on cancellation."""
+        with ExitStack() as context:
+            for variable, value in ((current_services, services), (current_conversation_id, conversation_id),
+                                    (current_vault, vault), (current_turn_budget, budget),
+                                    (current_jev, screener_for(settings))):
+                context.callback(variable.reset, variable.set(value))
+            with trace_ai_work("chat", settings, conversation_pseudonym(conversation_id, settings.session_secret), prompt_versions()) as span:
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        await asyncio.to_thread(services.actions.ensure_conversation, conversation_id)
+                        previous = (await asyncio.to_thread(services.actions.list_messages, conversation_id))[-2:]
+                        if user_text:
+                            await asyncio.to_thread(services.actions.add_message, conversation_id, "user", user_text)
 
-    return StreamingResponse(
-        encode(),
-        media_type=SSE_CONTENT_TYPE,
-        headers={**STREAM_HEADERS, "X-Conversation-Id": conversation_id},
-    )
+                        async def summarize(prompt: str) -> str:
+                            """Bound each protected summary attempt separately from chat usage."""
+                            async with asyncio.timeout(settings.summary_timeout_seconds):
+                                with trace_ai_work("summary", settings, conversation_pseudonym(conversation_id, settings.session_secret), prompt_versions()):
+                                    return await summarize_with_model(request.app.state.ai_model or settings.model, prompt, settings)
+
+                        history = await update_stored_summary(services.actions, conversation_id, settings.chat_summary_every,
+                            summarize, max_blocks=settings.summary_max_blocks, recent_limit=settings.history_message_limit,
+                            character_limit=settings.history_character_limit)
+                        context.callback(current_history_summary.reset, current_history_summary.set(history))
+                        prepared = await asyncio.to_thread(prepare_guardrail_input, user_text, [
+                            GuardrailMessage(role="assistant" if message.role == "assistant" else "user", content=message.content)
+                            for message in previous if message.role in {"user", "assistant"}])
+                        context.callback(current_guardrail_context.reset, current_guardrail_context.set(prepared.context))
+                        await asyncio.to_thread(prepare_run_input, run_input)
+
+                        async def safe_native():
+                            """Sanitize errors before the adapter converts them into client events."""
+                            try:
+                                async with aclosing(adapter.run_stream_native(usage_limits=budget.limits(),
+                                        model_settings=model_settings(settings))) as events:
+                                    async for event in events:
+                                        yield event
+                                span.set_attribute("ledger.outcome", "complete")
+                            except Exception as error:
+                                span.set_attribute("ledger.outcome", "error")
+                                raise RuntimeError(public_chat_error(error)) from None
+
+                        restorer = OutboundRestorer(vault)
+                        native = safe_native()
+                        events = adapter.transform_stream(native, on_complete=on_complete)
+                        async with aclosing(native), aclosing(events), aclosing(adapter.encode_stream(events)) as encoded:
+                            async for chunk in encoded:
+                                restored = restorer.push(chunk)
+                                if restored:
+                                    yield restored
+                        tail = restorer.finish()
+                        if tail:
+                            yield tail
+                except asyncio.CancelledError:
+                    span.set_attribute("ledger.outcome", "cancelled")
+                    raise
+                except Exception as error:
+                    # Do not flush a partial protected token from an interrupted response.
+                    span.set_attribute("ledger.outcome", "error")
+                    yield "data: " + json.dumps({"type": "error", "errorText": public_chat_error(error)}) + "\n\n"
+                    yield "data: [DONE]\n\n"
+                finally:
+                    span.set_attribute("ledger.requests", budget.requests)
+                    span.set_attribute("ledger.tools", budget.tools)
+                    span.set_attribute("ledger.input_tokens", budget.input_tokens)
+                    span.set_attribute("ledger.output_tokens", budget.output_tokens)
+
+    return StreamingResponse(encode(), media_type=SSE_CONTENT_TYPE,
+        headers={**STREAM_HEADERS, "X-Conversation-Id": conversation_id})

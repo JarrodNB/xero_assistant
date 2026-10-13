@@ -15,6 +15,7 @@ Public API:
 """
 
 from contextvars import ContextVar
+import asyncio
 from typing import Protocol
 
 from pydantic_ai_harness import GuardrailResult
@@ -111,21 +112,23 @@ def route(nouls: dict[str, float], severity: float, policy: dict[str, float]) ->
 class TypeSafeJevScreener:
     """Call Jev once for the user message and apply the strict policy."""
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, timeout_seconds: float = 5) -> None:
         """Store the TypeSafe key and the Jev model id."""
         self._api_key = api_key
         self._model = model
+        self._timeout_seconds = timeout_seconds
 
     async def guard(self, text: str, side: str) -> str:
         """Screen user input with Jev. Replies are not sent to this model."""
         if side != "input":
             raise ValueError("Jev screens user input only.")
-        async with AsyncTypeSafeClient(api_key=self._api_key) as client:
-            response = await client.system_one(
-                state=text,
-                questions=INPUT_BATTERY,
-                model=self._model,
-            )
+        async with asyncio.timeout(self._timeout_seconds):
+            async with AsyncTypeSafeClient(api_key=self._api_key) as client:
+                response = await client.system_one(
+                    state=text,
+                    questions=INPUT_BATTERY,
+                    model=self._model,
+                )
         answers = response.answers
         nouls = {name: answers[name].noul for name in INPUT_BATTERY if name != "severity"}
         return route(nouls, float(answers["severity"].score), POLICIES["strict"])
@@ -135,7 +138,7 @@ def screener_for(settings: Settings) -> JevScreener | None:
     """Build a Jev screener when a TypeSafe key is configured."""
     if not settings.typesafe_api_key:
         return None
-    return TypeSafeJevScreener(settings.typesafe_api_key, settings.jev_model or JEV_MODEL)
+    return TypeSafeJevScreener(settings.typesafe_api_key, settings.jev_model or JEV_MODEL, settings.jev_timeout_seconds)
 
 
 async def screen_user_message(prompt: str) -> GuardrailResult:
@@ -144,7 +147,18 @@ async def screen_user_message(prompt: str) -> GuardrailResult:
     if screener is None or not prompt.strip():
         return GuardrailResult.allow()
     try:
-        action = await screener.guard(format_guardrail_input(prompt), "input")
+        from app.chat.execution import current_turn_budget
+        budget = current_turn_budget.get()
+        timeout = budget.settings.jev_timeout_seconds if budget else 5
+        if budget is not None:
+            from app.observability import conversation_pseudonym, trace_ai_work
+            from app.chat.execution import prompt_versions
+            from app.runtime import current_conversation_id
+            with trace_ai_work("guardrail", budget.settings,
+                    conversation_pseudonym(current_conversation_id.get() or "", budget.settings.session_secret), prompt_versions()):
+                action = await asyncio.wait_for(screener.guard(format_guardrail_input(prompt), "input"), timeout=timeout)
+        else:
+            action = await asyncio.wait_for(screener.guard(format_guardrail_input(prompt), "input"), timeout=timeout)
     except Exception:
         return GuardrailResult.block(CHECK_FAILED)
     if action == "pass":

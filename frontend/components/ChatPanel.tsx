@@ -122,8 +122,9 @@ function PacedText({ active, messageId, onPacingChange, text }: PacedTextProps) 
     if (active) {
       startedPaced.current = true;
     }
-    if (!startedPaced.current) {
+    if (!active || !startedPaced.current) {
       setVisible(text);
+      onPacingChange(messageId, false);
       return;
     }
     if (!stillMatches) {
@@ -357,6 +358,22 @@ type ChatPanelProps = {
   onActivity: () => void;
 };
 
+/** Map known backend failures to safe guidance without rendering arbitrary transport diagnostics. */
+function chatFailureMessage(caught: unknown): string {
+  const message = caught instanceof Error ? caught.message : "";
+  const known = [
+    "The assistant timed out. Try a shorter request.",
+    "The assistant reached its work limit. Try a narrower request.",
+    "The model provider is busy. Wait briefly and try again.",
+    "The model provider is unavailable. Try again shortly.",
+    "The assistant could not produce a valid answer. Rephrase your request.",
+  ];
+  const matched = known.find((text) => message.startsWith(text));
+  return matched
+    ? `${matched} Reopen this conversation to review saved proposals.`
+    : "Ledger could not finish this reply. Try again or reopen this conversation to review saved proposals.";
+}
+
 /**
  * Stream the assistant and confirm each proposed write on its own.
  */
@@ -384,9 +401,14 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   );
   const historyMessageIds = useRef(new Set(seed.map((message) => message.id)));
   const grouped = groupHistoryActions(transcript, historyActions);
-  const { messages, sendMessage, status } = useChat({
+  const [streamError, setStreamError] = useState("");
+  const { messages, sendMessage, status, error, clearError, stop } = useChat({
     id: conversation,
     messages: seed,
+    onError: (caught) => {
+      setStreamError(chatFailureMessage(caught));
+      onActivity();
+    },
     transport: new DefaultChatTransport({
       api: "/api/backend/chat",
       headers: { "X-Conversation-Id": conversation },
@@ -403,7 +425,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   const followLatest = useRef(true);
   const decidingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
-  const visuallyBusy = busy || pacingIds.size > 0;
+  const visuallyBusy = busy || (!error && !streamError && pacingIds.size > 0);
   const locked = visuallyBusy || deciding;
   const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
   const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
@@ -457,10 +479,17 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
     if (!text) {
       return;
     }
+    if (busy) {
+      return;
+    }
     followLatest.current = true;
+    clearError();
+    setStreamError("");
     setDraft("");
     try {
       await sendMessage({ text });
+    } catch (caught) {
+      setStreamError(chatFailureMessage(caught));
     } finally {
       onActivity();
     }
@@ -550,10 +579,12 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         narration = `The user attempted to ${decision} action ${proposal.action_id}. Recorded status: ${recordedStatus}. Request error: ${message}. Explain the recorded status without claiming a write failed or succeeded unless its stored status establishes that. Do not repeat this message or the action id.`;
       }
       followLatest.current = true;
+      clearError();
+      setStreamError("");
       try {
         await sendMessage({ text: narration });
       } catch {
-        // The follow-up is for the model. Leave it off the screen if the request fails.
+        setStreamError("The action status is saved, but Ledger could not explain it. Reopen this conversation to review the result.");
       }
     } finally {
       decidingRef.current = false;
@@ -650,7 +681,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
                 <p className={`bubble ${message.role}`} key={`${message.id}-text-${index}`}>
                   {message.role === "assistant" ? (
                     <PacedText
-                      active={newAssistantReply}
+                      active={newAssistantReply && busy && !error && !streamError}
                       messageId={`${message.id}-text-${index}`}
                       onPacingChange={setMessagePacing}
                       text={part.text ?? ""}
@@ -667,6 +698,16 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
         })}
         {grouped.trailing.map((proposal) => renderProposal(proposal, locked))}
       </div>
+      {error || streamError ? (
+        <p className="error" role="alert">{streamError || chatFailureMessage(error)}</p>
+      ) : null}
+      {busy ? (
+        <button className="secondary" type="button" onClick={() => {
+          void stop();
+          setStreamError("Reply stopped. Reopen this conversation to review any saved proposals before requesting another change.");
+          onActivity();
+        }}>Stop reply</button>
+      ) : null}
       <form className="chat-form" onSubmit={(event) => void onSubmit(event)}>
         <input
           value={draft}

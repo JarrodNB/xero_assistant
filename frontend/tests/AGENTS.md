@@ -8,3 +8,4 @@ JavaScript test files use the purpose/public API header from `frontend/AGENTS.md
 
 - `api.test.cjs` — write receipt persistence, concurrent submissions, sanitized errors, and retry identifiers
 - `invoiceEdits.test.cjs` — form submissions, partial payloads, reference clearing, line removals, unsupported edits, and server-response reconciliation
+- `chatErrors.test.cjs` — actual AI SDK parsing with mocked SSE errors/fetch failures, curated recovery messages, pending-card recovery, and aborting an unfinished stream. Network responses are synthetic; no browser or provider is used.

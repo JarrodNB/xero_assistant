@@ -19,3 +19,10 @@ Before each parent or child model request, protect a copy of model history with 
 - `prompt.py` — orchestrator and invoices instructions, including the confirm-before-write rule
 - `summary.py` — fold older messages into one stored summary of at most 2,000 characters
 - `routes.py` — stream a turn and read saved conversations
+## Bounded execution (Phase 4)
+
+`execution.py` owns typed turn counters, model settings, the supported production OpenAI client, safe error classification, and prompt-source hashes. Parent and child each attach its hooks; do not inherit these hooks a second time. Count model requests and tools before execution and tokens after responses, including child calls and validation retries. Framework usage totals alone do not enforce unmanaged child limits in the installed harness.
+
+`routes.py` puts preparation, summary, screening, model work, and tools under one deadline, with context cleanup in the stream task. Sanitize native failures before protocol conversion. Never flush a partially restored token on interruption or discard already-stored proposals. Only completed replies are saved.
+
+Summary folding is separately bounded, defaults to one block per turn, and retains the last saved summary/coverage on a failed block. Always bound the recent stored tail, including when folding is disabled. Warn the model when earlier context is unavailable. Regression coverage lives in `tests/test_ai_execution.py`; live model evaluations remain opt-in.

@@ -94,6 +94,16 @@ docker compose run --rm --no-deps frontend npm run build
 
 Confirmed writes have a 120-second execution deadline, configurable with `ACTION_EXECUTION_TIMEOUT_SECONDS` (greater than 0, at most 240). If a card says **Outcome unknown**, check Xero before requesting another change. **Check status** reads the saved receipt and never repeats the write. See [ARCHITECTURE.md](ARCHITECTURE.md) for recovery details and idempotency limits.
 
+Chat turns have a 60-second deadline covering preparation, summary updates, screening, model calls, and tools. Parent and invoices-agent work share limits of 12 model requests, 12 tool calls, and 20,000 reported tokens. Each model request asks for at most 2,048 output tokens and has a 20-second provider timeout. Token totals are checked after responses; a response can exceed the remaining token allowance, after which no more model/tool work is permitted. New messages are limited to 4,000 characters. These defaults and validated environment settings are listed in `.env.example`.
+
+Production chat uses the `openai:` provider with SDK retries disabled (`AI_PROVIDER_RETRIES=0`, the only accepted policy). Failures are surfaced for a deliberate retry; the app does not replay a model turn that may already have proposed actions. Model validation gets at most one retry, counted in the shared budget. Set `CHAT_TEMPERATURE=null` when the configured model does not support temperature.
+
+Summary work allows one fold per turn by default, with a 10-second deadline, two requests, 4,000 tokens, and 768 output tokens per fold. A failed fold retains the last saved summary and its coverage. History sent to the model keeps at most 20 recent stored messages and 12,000 characters, plus the 2,000-character summary. If earlier details are missing, the model is told to ask for them. `CHAT_SUMMARY_EVERY=0` disables folding while retaining bounded history. Configured Jev screening has a five-second deadline and fails closed on timeout or provider failure.
+
+Timeouts, exhausted budgets, invalid model responses, outages, and rate limits end the stream with safe recovery guidance. **Stop reply** cancels an unfinished response. Any already-saved proposal remains available when the conversation is reopened; streaming failure does not execute it. Browser acceptance remains user-run.
+
+Optional Langfuse export samples 10% of AI workflows by default and exports metadata only: model/tool names, reported tokens, span latency, prompt-source hashes, environment, outcome, and an HMAC conversation identifier. Prompts, replies, arguments, tool results, exception bodies, and unrelated HTTP/database spans are excluded. Billing costs remain unavailable. Configure a 30-day retention policy in the tracing deployment/account before enabling it; the app does not automatically delete remote traces. Offline tests disable export. No new tracing service is required.
+
 ## Project scope
 
 Ledger is a portfolio project built around one connected Xero Demo Company and shared demo sign-in. Its implemented workflows cover contacts and sales invoices. Production multi-tenant access, broader accounting workflows, and production deployment are outside the current scope.

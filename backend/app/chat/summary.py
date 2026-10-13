@@ -14,7 +14,7 @@ Public API:
 
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
@@ -27,6 +27,9 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models import Model
+from pydantic_ai.usage import UsageLimits
+from app.config import Settings
+from app.chat.execution import model_settings
 
 from app.chat.guardrails.pii import current_vault
 from app.chat.guardrails.redaction import redact_text
@@ -54,6 +57,9 @@ class HistorySummary:
     text: str
     every: int
     recent_stored: list[StoredMessage]
+    degraded: bool = False
+    server_owned: bool = False
+    applied: bool = False
 
 
 current_history_summary: ContextVar[HistorySummary | None] = ContextVar("current_history_summary", default=None)
@@ -101,10 +107,14 @@ def summary_prompt(previous: str, messages: list[StoredMessage]) -> str:
     return "\n".join(lines)
 
 
-async def summarize_with_model(model: str | Model, prompt: str) -> str:
+async def summarize_with_model(model: str | Model, prompt: str, settings: Settings | None = None) -> str:
     """Ask a tool-free model to rewrite the running summary."""
-    agent = Agent(model, instructions=SUMMARY_INSTRUCTIONS)
-    result = await agent.run(prompt)
+    agent = Agent(model, name="summary", instructions=SUMMARY_INSTRUCTIONS,
+                  retries=settings.ai_validation_retries if settings else 1)
+    result = await agent.run(prompt,
+        model_settings=model_settings(settings, summary=True) if settings else {"max_tokens": 768, "timeout": 10},
+        usage_limits=UsageLimits(request_limit=settings.summary_request_limit if settings else 2,
+            total_tokens_limit=settings.summary_token_limit if settings else 4000, tool_calls_limit=0))
     output = result.output
     return output if isinstance(output, str) else str(output)
 
@@ -114,44 +124,76 @@ async def update_stored_summary(
     conversation_id: str,
     every: int,
     summarize: Callable[[str], Awaitable[str]],
-) -> HistorySummary | None:
+    *, max_blocks: int = 1, recent_limit: int = 20, character_limit: int = 12000,
+) -> HistorySummary:
     """Fold each ready block into the stored summary and return what the model should see."""
-    if every <= 0:
-        return None
     messages = repository.list_messages(conversation_id)
     stored = repository.get_chat_summary(conversation_id)
     covered = stored.covered_message_count if stored else 0
     text = stored.summary if stored else ""
-    while True:
+    degraded = False
+    for _ in range(max_blocks):
         bounds = next_summary_slice(len(messages), covered, every)
         if bounds is None:
             break
         start, end = bounds
-        updated = limit_summary((await summarize(summary_prompt(text, messages[start:end]))).strip())
+        try:
+            updated = limit_summary((await summarize(summary_prompt(text, messages[start:end]))).strip())
+        except Exception:
+            degraded = True
+            break
         vault = current_vault.get()
         if vault is not None and updated:
             updated = vault.restore_text(updated)
         if not updated:
+            degraded = True
             break
-        text = updated
-        covered = end
-        repository.save_chat_summary(conversation_id, text, covered)
-    if not text.strip():
-        return None
-    return HistorySummary(text=text, every=every, recent_stored=messages[covered:])
+        try:
+            repository.save_chat_summary(conversation_id, updated, end)
+        except Exception:
+            degraded = True
+            break
+        text, covered = updated, end
+    recent = messages[covered:][-recent_limit:]
+    remaining = character_limit
+    bounded: list[StoredMessage] = []
+    for message in reversed(recent):
+        if remaining <= 0:
+            break
+        content = message.content[:remaining]
+        bounded.append(replace(message, content=content))
+        remaining -= len(content)
+    bounded.reverse()
+    degraded = degraded or len(bounded) < len(messages[covered:]) or any(
+        old.content != new.content for old, new in zip(recent[-len(bounded):], bounded))
+    return HistorySummary(text=text, every=every, recent_stored=bounded, degraded=degraded, server_owned=True)
 
 
 def apply_history_summary(messages: list[ModelMessage]) -> list[ModelMessage]:
     """Replace covered history with the stored summary, leaving the recent tail verbatim."""
     state = current_history_summary.get()
-    if state is None or not state.text.strip():
+    if state is None:
         return messages
+    if state.server_owned and state.applied:
+        return messages
+    if state.server_owned:
+        state.applied = True
+        text = state.text or "No earlier summary; use the recent stored conversation."
+        if state.degraded:
+            text += "\nSome earlier context is unavailable. Ask for missing details; do not guess contacts, amounts, dates, or execution outcomes."
+        return [_summary_message(text), *_stored_as_model_messages(state.recent_stored)]
     if _starts_with_summary(messages):
         return messages
-    if len(messages) < len(state.recent_stored):
-        return [_summary_message(state.text), *_stored_as_model_messages(state.recent_stored)]
+    text = state.text
+    if state.degraded:
+        text += "\nSome earlier context is unavailable. Ask for missing details; do not guess contacts, amounts, dates, or execution outcomes."
+    if not text.strip() and not state.degraded:
+        return [_summary_message("No earlier summary; use the recent stored conversation."),
+                *_stored_as_model_messages(state.recent_stored)]
+    if len(messages) < len(state.recent_stored) or state.degraded:
+        return [_summary_message(text), *_stored_as_model_messages(state.recent_stored)]
     kept = _keep_recent(messages, len(state.recent_stored))
-    return [_summary_message(state.text), *kept]
+    return [_summary_message(text), *kept]
 
 
 def _last_sentence_end(text: str) -> int:

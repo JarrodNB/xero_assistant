@@ -22,6 +22,8 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ.setdefault("MODEL", "openai:gpt-4.1-mini")
 os.environ.setdefault("DATABASE_PATH", str(Path(tempfile.gettempdir()) / "xero-assistant-import.db"))
 os.environ["APP_PASSWORD_HASH"] = PasswordHasher().hash("interview-secret")
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
 
 USERNAME = "interviewer"
 PASSWORD = "interview-secret"

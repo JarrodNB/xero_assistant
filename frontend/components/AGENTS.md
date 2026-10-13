@@ -12,3 +12,4 @@ An invoice edit validates line values only when lines changed. Unsupported exist
 
 - `ChatPanel.tsx` — one conversation, streaming replies, and confirm or deny cards
 - `InvoiceForm.tsx` — line items and the save and void actions used by the invoice editor
+Chat SDK error/cancellation states must release the composer and text-pacing locks. Render curated guidance for known backend errors, never arbitrary exception text. Keep pending proposal cards recoverable and offer Stop reply while a request is busy. Do not automatically retry interrupted turns or narrations.

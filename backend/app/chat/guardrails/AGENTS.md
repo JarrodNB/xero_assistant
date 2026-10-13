@@ -14,3 +14,4 @@ The vault reuses already known raw values before fresh detection, with boundarie
 - `redaction.py` — protect prompts and tool results, restore tool arguments, and strip secrets
 - `phrase_screen.py` — known jailbreak, harm, dosage, and self-harm phrases
 - `policy_screen.py` — strict input policy, refusal routes, and the user-message screen
+Configured Jev screening is bounded by `JEV_TIMEOUT_SECONDS` (five by default) and the overall chat deadline. Failure remains fail-closed; cancellation must propagate and request context must reset. Do not send failed-screen diagnostics or raw content to traces. Guardrail tracing is metadata only.

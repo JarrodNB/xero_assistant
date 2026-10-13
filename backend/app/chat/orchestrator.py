@@ -16,18 +16,22 @@ from app.chat.guardrails.redaction import protect_model_history, tool_result_gua
 from app.chat.invoices_agent import build_invoices_agent
 from app.chat.prompt import SYSTEM_PROMPT, current_date_instruction
 from app.chat.summary import apply_history_summary
+from app.chat.execution import budget_capabilities
+from app.config import Settings
 
 
-def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
+def build_chat_agent(model: str | Model, server: FastMCP, settings: Settings | None = None) -> Agent:
     """Create the orchestrator. It delegates reads and calls propose_action itself."""
-    invoices = build_invoices_agent(model, server)
+    invoices = build_invoices_agent(model, server, settings)
     propose = MCPToolset(server).filtered(lambda _ctx, tool: tool.name == "propose_action")
     return Agent(
         model,
         name="orchestrator",
+        retries=settings.ai_validation_retries if settings else 1,
         instructions=[SYSTEM_PROMPT, current_date_instruction],
         toolsets=[propose],
         capabilities=[
+            *budget_capabilities(),
             *chat_guardrails(),
             ProcessHistory(apply_history_summary),
             ProcessHistory(protect_model_history),
@@ -35,6 +39,7 @@ def build_chat_agent(model: str | Model, server: FastMCP) -> Agent:
                 agents=[SubAgent(invoices, max_calls=3)],
                 shared_capabilities=[tool_result_guardrail()],
                 max_depth=2,
+                forward_usage=True,
                 contain_errors=True,
             ),
         ],
