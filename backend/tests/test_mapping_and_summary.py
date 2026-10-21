@@ -53,9 +53,9 @@ def test_unpaid_and_overdue_totals() -> None:
         today,
     )
     assert summary.unpaid_count == 2
-    assert summary.unpaid_total == Decimal("75")
+    assert summary.currencies[0].unpaid_total == Decimal("75")
     assert summary.overdue_count == 1
-    assert summary.overdue_total == Decimal("55")
+    assert summary.currencies[0].overdue_total == Decimal("55")
 
 
 def test_period_comparison_ignores_drafts_and_voids() -> None:
@@ -73,9 +73,9 @@ def test_period_comparison_ignores_drafts_and_voids() -> None:
         date(2026, 2, 1),
         date(2026, 2, 28),
     )
-    assert comparison.period_a_total == Decimal("100")
-    assert comparison.period_b_total == Decimal("40")
-    assert comparison.difference == Decimal("-60")
+    assert comparison.currencies[0].period_a_total == Decimal("100")
+    assert comparison.currencies[0].period_b_total == Decimal("40")
+    assert comparison.currencies[0].difference == Decimal("-60")
 
 
 def test_newest_invoices_come_first() -> None:

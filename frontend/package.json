@@ -4,15 +4,21 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "tsc --outDir /tmp/ledger-frontend-tests --rootDir . --module commonjs --target ES2022 --jsx react-jsx --esModuleInterop --skipLibCheck lib/api.ts lib/invoiceEdits.ts components/InvoiceForm.tsx components/ChatPanel.tsx && NODE_PATH=./node_modules node --test tests/*.test.cjs",
+    "test": "tsc --outDir /tmp/ledger-frontend-tests --rootDir . --module commonjs --target ES2022 --jsx react-jsx --esModuleInterop --skipLibCheck lib/api.ts lib/invoiceEdits.ts components/InvoiceForm.tsx components/ChatPanel.tsx \"app/(app)/invoices/page.tsx\" && NODE_PATH=./node_modules node --test tests/*.test.cjs",
     "start": "next start -H 0.0.0.0 -p 3000"
   },
   "dependencies": {
-    "@ai-sdk/react": "^2.0.80",
-    "ai": "^5.0.80",
+    "@ai-sdk/react": "2.0.275",
+    "ai": "5.0.272",
     "next": "^15.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
+  },
+  "overrides": {
+    "@ai-sdk/provider-utils": {
+      "undici": "6.28.1"
+    },
+    "postcss": "8.5.23"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.0",

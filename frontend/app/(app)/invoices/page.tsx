@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiRequestError, apiRequest } from "../../../lib/api";
-import { Invoice } from "../../../lib/types";
+import { Invoice, InvoiceSummary, InvoiceReadResult } from "../../../lib/types";
 
 /**
  * Map a Xero status onto a pill class.
@@ -39,10 +39,19 @@ export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [status, setStatus] = useState("");
   const [contactName, setContactName] = useState("");
-  const [summary, setSummary] = useState({ unpaid_total: 0, overdue_total: 0, invoice_total: 0 });
+  const [summary, setSummary] = useState<InvoiceSummary | null>(null);
+  const [complete, setComplete] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [partialMessage, setPartialMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setSummary(null);
+    setInvoices([]);
+    setPartialMessage("");
+    setError("");
     /**
      * Load invoices and totals for the current filters.
      */
@@ -56,19 +65,28 @@ export default function InvoiceListPage() {
       }
       const query = params.toString();
       try {
-        const [invoiceBody, summaryBody] = await Promise.all([
-          apiRequest<{ invoices: Invoice[] }>(`/api/backend/invoices${query ? `?${query}` : ""}`),
-          apiRequest<typeof summary>(`/api/backend/invoice-summary${query ? `?${query}` : ""}`),
+        const [invoiceResult, summaryResult] = await Promise.allSettled([
+          apiRequest<InvoiceReadResult>(`/api/backend/invoices${query ? `?${query}` : ""}`),
+          apiRequest<InvoiceSummary>(`/api/backend/invoice-summary${query ? `?${query}` : ""}`),
         ]);
-        setInvoices(invoiceBody.invoices);
-        setSummary(summaryBody);
-        setError("");
+        if (cancelled) return;
+        if (invoiceResult.status === "rejected") throw invoiceResult.reason;
+        setInvoices(invoiceResult.value.invoices);
+        setComplete(invoiceResult.value.complete);
+        setLoaded(true);
+        if (!invoiceResult.value.complete) {
+          setPartialMessage(invoiceResult.value.next_step ?? "Results are partial. Narrow the filters.");
+        }
+        if (summaryResult.status === "rejected") throw summaryResult.reason;
+        setSummary(summaryResult.value);
       } catch (caught) {
+        if (cancelled) return;
         const message = caught instanceof ApiRequestError ? `${caught.message}. ${caught.nextStep}` : "Invoices could not be loaded.";
         setError(message);
       }
     }
     void load();
+    return () => { cancelled = true; };
   }, [status, contactName]);
 
   return (
@@ -79,20 +97,23 @@ export default function InvoiceListPage() {
           New invoice
         </Link>
       </div>
-      <div className="summary-row">
+      {summary ? <div className="summary-row">
         <div className="panel summary-card">
           <span>Unpaid</span>
-          <strong>{summary.unpaid_total.toFixed(2)}</strong>
+          {summary.currencies.map((group) => <strong key={group.currency}>{group.unpaid_total.toFixed(2)} {group.currency}</strong>)}
+          {summary.currencies.length === 0 ? <strong>No matching invoices</strong> : null}
         </div>
-        <div className={summary.overdue_total > 0 ? "panel summary-card warning" : "panel summary-card"}>
+        <div className={summary.currencies.some((group) => group.overdue_total > 0) ? "panel summary-card warning" : "panel summary-card"}>
           <span>Overdue</span>
-          <strong>{summary.overdue_total.toFixed(2)}</strong>
+          {summary.currencies.map((group) => <strong key={group.currency}>{group.overdue_total.toFixed(2)} {group.currency}</strong>)}
+          {summary.currencies.length === 0 ? <strong>No matching invoices</strong> : null}
         </div>
         <div className="panel summary-card">
           <span>Listed total</span>
-          <strong>{summary.invoice_total.toFixed(2)}</strong>
+          {summary.currencies.map((group) => <strong key={group.currency}>{group.invoice_total.toFixed(2)} {group.currency}</strong>)}
+          {summary.currencies.length === 0 ? <strong>No matching invoices</strong> : null}
         </div>
-      </div>
+      </div> : <p>Totals unavailable until complete results load.</p>}
       <div className="filters panel">
         <label className="field">
           Status
@@ -110,6 +131,7 @@ export default function InvoiceListPage() {
         </label>
       </div>
       {error ? <p className="error">{error}</p> : null}
+      {partialMessage ? <p role="status">{partialMessage}</p> : null}
       <div className="panel table-panel">
         <table>
           <thead>
@@ -127,7 +149,7 @@ export default function InvoiceListPage() {
             {invoices.length === 0 ? (
               <tr>
                 <td className="empty" colSpan={7}>
-                  No invoices match these filters.
+                  {loaded && complete ? "No invoices match these filters." : loaded ? "No matches in the partial results. Narrow the filters." : "Invoices have not loaded."}
                 </td>
               </tr>
             ) : (
@@ -147,7 +169,7 @@ export default function InvoiceListPage() {
                   <td className="money">
                     {invoice.total.toFixed(2)} {invoice.currency}
                   </td>
-                  <td className="money">{invoice.amount_due.toFixed(2)}</td>
+                  <td className="money">{invoice.amount_due.toFixed(2)} {invoice.currency}</td>
                 </tr>
               ))
             )}

@@ -133,6 +133,10 @@ Primary files: `backend/app/config.py`, `backend/app/chat/routes.py`, agent buil
 
 ## Phase 5: Make financial totals complete and currency-aware
 
+Implementation status: delivered for offline automated verification on 13 October 2026. Typed v2 HTTP/MCP contracts, native-currency summary groups, aligned per-currency period comparisons, explicit empty results, and currency-labelled UI displays are implemented. Invoice reads retain 2,000 records and use one bounded lookahead page to distinguish exact-cap completeness from truncation. Lists carry completeness and recovery guidance; aggregates reject incomplete reads without amounts. Contact searches are bounded and fail closed on truncation, with up to 100 matching contact IDs applied upstream. Comparisons query the requested periods separately to exclude gap dates and deduplicate overlaps; identical ranges reuse one read. Reversed dates and malformed page envelopes fail safely. Prompts and five new synthetic deterministic evaluation cases cover currency/empty/truncation wording. No exchange-rate conversion or new persistence schema is introduced. Xero paging is not a transactional snapshot.
+
+Phase 5 verification: 313 offline backend tests passed, five paid datasets skipped; 24 frontend tests passed, including four actual invoice-list interactions for mixed currencies, empty/partial results, and stale filters. The production build and type checks passed. Regressions cover below/exact/above-cap invoice and contact reads, aggregate rejection, upstream filters, period overlap/gap behavior, typed HTTP/MCP schemas, date validation, malformed envelopes, and deterministic answer checks. No provider evaluations, live Xero writes, or IDE-browser tests ran. User-run local browser acceptance remains outstanding. Phase 6 remains outstanding.
+
 Addresses findings 6 and 8.
 
 ### Implementation
@@ -181,7 +185,7 @@ Addresses finding 9 and the review's CI, frontend-test, and resume-presentation 
 
 ## Execution and release checks
 
-Run installation, builds, and tests through Docker Compose in Ubuntu WSL at `/mnt/c/Users/Jarrod/Desktop/xero_assistant`. Rebuild the backend when dependencies change. Do not create a Windows Python environment or print `.env`.
+Run installation, builds, and tests through Docker Compose directly on Ubuntu at `/home/jarrod/Desktop/xero_assistant`. Rebuild the backend when dependencies change. Do not create a host Python environment or print `.env`.
 
 After Phase 3, the default verification commands should be:
 

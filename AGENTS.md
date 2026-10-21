@@ -35,19 +35,21 @@ Ledger is a Xero assistant for the demo company. The browser talks only to the N
 
 ## Docker workflow
 
-Install, run, and test through Docker Compose from the Ubuntu WSL distro. Do not create a `.venv` or run `pip`, `python`, or `py` on the Windows host. Docker Desktop's default WSL distro (`docker-desktop`) does not contain this project's containers. The repository path in Ubuntu is `/mnt/c/Users/Jarrod/Desktop/xero_assistant`.
+Install, run, and test through Docker Compose directly on Ubuntu. Do not create a host `.venv` or install project dependencies on the host. The repository path is `/home/jarrod/Desktop/xero_assistant`. Docker Engine and the Docker Compose plugin must be installed, with the daemon running and accessible to your user.
 
-Run commands from PowerShell through Ubuntu WSL, for example:
+Run commands from an Ubuntu terminal, for example:
 
-```powershell
-wsl -d Ubuntu -e bash -lc 'cd /mnt/c/Users/Jarrod/Desktop/xero_assistant && docker compose run --rm --build --no-deps backend pytest -q'
+```bash
+cd /home/jarrod/Desktop/xero_assistant
+docker compose run --rm --build --no-deps backend pytest -q
 ```
 
 - Add Python dependencies in `backend/pyproject.toml`, then rebuild with `--build`; installing a dependency in a temporary `docker compose run` container does not persist.
 - `./backend/app`, `./backend/tests`, and `./backend/evals` are mounted. Uvicorn reloads when `app` changes, so those edits do not need a rebuild.
-- `./frontend` is mounted and runs `next dev` with polling because the repository is on the Windows drive. Add npm dependencies in `frontend/package.json`, then run `docker compose run --rm --no-deps frontend npm install`.
-- Avoid passing `python -c` through nested PowerShell/WSL quotes. For a short script, put it under `backend/evals` or `backend/app`, run it in Docker Compose, then remove the temporary script.
-- Start the app with `docker compose up --build` from the same Ubuntu command. The site is at `http://localhost:3001` and the API at `http://localhost:8000`.
+- `./frontend` is mounted and runs `next dev`; polling remains enabled for mounted-source reloads. Add npm dependencies in `frontend/package.json`, then run `docker compose run --rm --no-deps frontend npm install`.
+- Run temporary Python scripts inside Docker Compose rather than on the host.
+- Rebuild both images with `docker compose build`. Start the app with `docker compose up --build` from the repository directory. The site is at `http://localhost:3001` and the API at `http://localhost:8000`.
+- Named volumes belong to the local Docker daemon. Image rebuilds preserve them, but moving the repository to another computer does not transfer SQLite data or installed frontend dependencies. Restore a database backup if needed; do not use `docker compose down -v` unless intentionally deleting local data.
 - Compose loads `.env`. Do not print it or commit it.
 
 ## Layout

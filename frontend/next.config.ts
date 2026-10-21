@@ -24,7 +24,7 @@ async function rewrites() {
 }
 
 /**
- * Poll for saves. The repo is bind-mounted from Windows, which does not emit file events in the container.
+ * Poll for saves in the bind-mounted source tree for consistent container reloads.
  */
 const watchMountedSource: WebpackSetup = (config, { dev }) => {
   if (dev) {

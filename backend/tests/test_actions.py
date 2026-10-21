@@ -482,7 +482,8 @@ def test_accounting_request_sends_the_stored_tenant() -> None:
         client = XeroClient("id", "secret", store, httpx.AsyncClient(transport=httpx.MockTransport(handler)))
         service = XeroInvoiceService(client)
         invoices = await service.find_invoices(None, None, None, None)
-        assert invoices == []
+        assert invoices.invoices == []
+        assert invoices.complete is True
         await client.aclose()
 
     asyncio.run(run())

@@ -9,10 +9,10 @@ from datetime import date
 from typing import Any
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, LineItemPayload, UpdateInvoicePayload, VoidInvoicePayload
-from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError
+from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError, InvoiceReadResult
 from app.invoices.records import ContactRecord, InvoiceRecord, newest_first
 from app.invoices.line_updates import merge_invoice_lines
-from app.invoices.summary import InvoiceSummary, PeriodComparison, compare_invoice_periods, summarize_invoice_records
+from app.invoices.summary import InvoiceSummary, PeriodComparison, compare_invoice_periods, summarize_invoice_records, validate_date_range
 from app.xero.client import XeroApiError, XeroClient
 from app.xero.mapping import map_contact, map_invoice
 
@@ -49,14 +49,28 @@ class XeroInvoiceService:
         status: str | None,
         date_from: date | None,
         date_to: date | None,
-    ) -> list[InvoiceRecord]:
+    ) -> InvoiceReadResult:
         """Return invoices matching the filters, newest issue date first."""
-        raw_invoices = await self._fetch_invoices(status, date_from, date_to)
+        _validate_range(date_from, date_to)
+        _where_clause(status, date_from, date_to)
+        contact_ids = None
+        if contact_name:
+            contacts = await self._search_contacts(contact_name)
+            if any(not isinstance(contact.get("ContactID"), str) or not contact["ContactID"] for contact in contacts):
+                raise InvoiceServiceError("Xero contact response is invalid", "A matching contact has no reliable identifier.",
+                                          True, "Retry the read once; no invoice result is available.")
+            contact_ids = [str(contact["ContactID"]) for contact in contacts]
+            if len(contact_ids) > 100:
+                raise InvoiceServiceError("Contact filter is too broad", "More than 100 contacts match the name.",
+                                          False, "Use a narrower contact name and try again.")
+            if not contact_ids:
+                return InvoiceReadResult([], scanned_count=0, limit=PAGE_LIMIT * 100)
+        raw_invoices, complete = await self._fetch_invoices(status, date_from, date_to, contact_ids)
         records = [map_invoice(invoice) for invoice in raw_invoices]
         if contact_name:
             needle = contact_name.casefold()
             records = [invoice for invoice in records if needle in invoice.contact_name.casefold()]
-        return newest_first(records)
+        return InvoiceReadResult(newest_first(records), complete, len(raw_invoices), PAGE_LIMIT * 100)
 
     async def get_invoice(self, invoice_number: str) -> InvoiceRecord:
         """Return one invoice, including its lines."""
@@ -73,7 +87,10 @@ class XeroInvoiceService:
     ) -> InvoiceSummary:
         """Summarize invoices, including unpaid and overdue amounts."""
         invoices = await self.find_invoices(contact_name, status, date_from, date_to)
-        return summarize_invoice_records(invoices, today)
+        try:
+            return summarize_invoice_records(invoices.require_complete(), today)
+        except ValueError as error:
+            raise _invalid_data(error) from error
 
     async def compare_invoice_totals(
         self,
@@ -83,10 +100,22 @@ class XeroInvoiceService:
         period_b_end: date,
     ) -> PeriodComparison:
         """Compare recognised totals for two date ranges."""
-        start = min(period_a_start, period_b_start)
-        end = max(period_a_end, period_b_end)
-        invoices = await self.find_invoices(None, None, start, end)
-        return compare_invoice_periods(invoices, period_a_start, period_a_end, period_b_start, period_b_end)
+        _validate_range(period_a_start, period_a_end)
+        _validate_range(period_b_start, period_b_end)
+        period_a = (await self.find_invoices(None, None, period_a_start, period_a_end)).require_complete()
+        if (period_a_start, period_a_end) == (period_b_start, period_b_end):
+            period_b = period_a
+        else:
+            period_b = (await self.find_invoices(None, None, period_b_start, period_b_end)).require_complete()
+        # The same sales invoice can appear in both overlapping ranges.
+        invoices = {invoice.invoice_number: invoice for invoice in [*period_a, *period_b]}
+        if any(not invoice.invoice_number for invoice in [*period_a, *period_b]):
+            raise InvoiceServiceError("Invoice data is invalid", "An invoice has no number for period alignment.",
+                                      False, "Check invoice numbers in Xero.")
+        try:
+            return compare_invoice_periods(list(invoices.values()), period_a_start, period_a_end, period_b_start, period_b_end)
+        except ValueError as error:
+            raise _invalid_data(error) from error
 
     async def create_contact(self, payload: CreateContactPayload) -> ContactRecord:
         """Create a contact in the demo company."""
@@ -209,12 +238,17 @@ class XeroInvoiceService:
     async def _fetch_contacts(self) -> list[dict[str, Any]]:
         """Page through contacts until a short page or the page cap."""
         rows: list[dict[str, Any]] = []
-        for page in range(1, PAGE_LIMIT + 1):
+        for page in range(1, PAGE_LIMIT + 2):
             try:
                 response = await self._client.get("/Contacts", {"page": page})
             except XeroApiError as error:
                 raise _from_xero(error) from error
-            batch = response.get("Contacts") or []
+            batch = _read_batch(response, "Contacts")
+            if page > PAGE_LIMIT:
+                if batch:
+                    raise InvoiceServiceError("Contact results are incomplete", "The bounded contact read has more records.",
+                                              False, "Narrow the contact name and try again.")
+                break
             rows.extend(batch)
             if len(batch) < 100:
                 break
@@ -222,14 +256,25 @@ class XeroInvoiceService:
 
     async def _search_contacts(self, name: str) -> list[dict[str, Any]]:
         """Search contacts and keep names that contain the query."""
-        try:
-            response = await self._client.get("/Contacts", {"searchTerm": name})
-        except XeroApiError as error:
-            raise _from_xero(error) from error
+        rows = []
+        for page in range(1, PAGE_LIMIT + 2):
+            try:
+                response = await self._client.get("/Contacts", {"searchTerm": name, "page": page, "pageSize": 100})
+            except XeroApiError as error:
+                raise _from_xero(error) from error
+            batch = _read_batch(response, "Contacts")
+            if page > PAGE_LIMIT:
+                if batch:
+                    raise InvoiceServiceError("Contact results are incomplete", "The bounded contact search has more records.",
+                                              False, "Use a narrower contact name and try again.")
+                break
+            rows.extend(batch)
+            if len(batch) < 100:
+                break
         needle = name.casefold()
         return [
             contact
-            for contact in response.get("Contacts") or []
+            for contact in rows
             if needle in str(contact.get("Name") or "").casefold()
         ]
 
@@ -261,23 +306,28 @@ class XeroInvoiceService:
         status: str | None,
         date_from: date | None,
         date_to: date | None,
-    ) -> list[dict[str, Any]]:
+        contact_ids: list[str] | None = None,
+    ) -> tuple[list[dict[str, Any]], bool]:
         """Page through invoices for a status and date window."""
         where = _where_clause(status, date_from, date_to)
         rows: list[dict[str, Any]] = []
-        for page in range(1, PAGE_LIMIT + 1):
-            params: dict[str, Any] = {"page": page}
+        for page in range(1, PAGE_LIMIT + 2):
+            params: dict[str, Any] = {"page": page, "pageSize": 100, "order": "InvoiceID ASC"}
+            if contact_ids:
+                params["ContactIDs"] = ",".join(contact_ids)
             if where:
                 params["where"] = where
             try:
                 response = await self._client.get("/Invoices", params)
             except XeroApiError as error:
                 raise _from_xero(error) from error
-            batch = response.get("Invoices") or []
+            batch = _read_batch(response, "Invoices")
+            if page > PAGE_LIMIT:
+                return rows, not bool(batch)
             rows.extend(batch)
             if len(batch) < 100:
                 break
-        return rows
+        return rows, True
 
     async def _raw_invoice(self, invoice_number: str) -> dict[str, Any]:
         """Load one raw invoice so later writes can use its Xero id internally."""
@@ -351,7 +401,7 @@ def _line_item(item: LineItemPayload, account_code: str, tax_type: str) -> dict[
 
 def _where_clause(status: str | None, date_from: date | None, date_to: date | None) -> str:
     """Build a Xero where filter from validated fields."""
-    parts: list[str] = []
+    parts: list[str] = ['Type=="ACCREC"']
     if status:
         if status not in INVOICE_STATUSES:
             raise InvoiceServiceError(
@@ -366,6 +416,29 @@ def _where_clause(status: str | None, date_from: date | None, date_to: date | No
     if date_to:
         parts.append(f"Date<=DateTime({date_to.year},{date_to.month},{date_to.day})")
     return "&&".join(parts)
+
+
+def _validate_range(start: date | None, end: date | None) -> None:
+    """Translate reversed ranges into a safe service validation failure."""
+    try:
+        validate_date_range(start, end)
+    except ValueError as error:
+        raise InvoiceServiceError("Date range is invalid", str(error), False,
+                                  "Use a start date on or before the end date.") from error
+
+
+def _invalid_data(error: ValueError) -> InvoiceServiceError:
+    """Report invalid financial data without inventing a currency."""
+    return InvoiceServiceError("Invoice data is invalid", str(error), False, "Check invoice currencies in Xero.")
+
+
+def _read_batch(response: dict[str, Any], field: str) -> list[dict[str, Any]]:
+    """Reject malformed page envelopes rather than treating them as complete emptiness."""
+    batch = response.get(field)
+    if not isinstance(batch, list) or any(not isinstance(row, dict) for row in batch) or len(batch) > 100:
+        raise InvoiceServiceError("Xero read response is invalid", "No reliable page was received.",
+                                  True, "Retry the read once; no financial total is available.")
+    return batch
 
 
 def _from_xero(error: XeroApiError) -> InvoiceServiceError:

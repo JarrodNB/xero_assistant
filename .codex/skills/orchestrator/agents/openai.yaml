@@ -1,0 +1,3 @@
+interface:
+  display_name: "Orchestrator"
+  short_description: "Deliver Kanban work through human QA"

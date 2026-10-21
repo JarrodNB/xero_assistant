@@ -95,6 +95,11 @@ INVOICES_DETERMINISTIC_CASES = (
     "period_comparison",
     "one_invoice",
     "injection_is_data",
+    "mixed_currency_summary",
+    "mixed_currency_comparison",
+    "empty_summary",
+    "truncated_summary",
+    "truncated_list",
 )
 
 INVOICES_JUDGE_CASES = (

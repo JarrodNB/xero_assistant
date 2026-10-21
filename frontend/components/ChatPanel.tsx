@@ -155,6 +155,27 @@ function PacedText({ active, messageId, onPacingChange, text }: PacedTextProps) 
 }
 
 /**
+ * Show a small animated ledger motif while the assistant prepares a reply.
+ */
+function ThinkingIndicator() {
+  return (
+    <div className="thinking-indicator" role="status" aria-live="polite" aria-label="Ledger is preparing a reply">
+      <span className="thinking-pages" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>Ledger is thinking it through</span>
+      <span className="thinking-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    </div>
+  );
+}
+
+/**
  * Hide confirm and deny prompts that are only for the model.
  */
 function isInternalTurn(message: ChatMessage): boolean {
@@ -430,6 +451,8 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
   const locked = visuallyBusy || deciding;
   const visible = (messages as ChatMessage[]).filter((message) => !isInternalTurn(message));
   const lastMessageId = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage).id : "";
+  const latestMessage = messages.length > 0 ? (messages[messages.length - 1] as ChatMessage) : null;
+  const replyHasStarted = latestMessage?.role === "assistant" && Boolean(messageText(latestMessage).trim());
 
   /**
    * Track replies that are still being revealed after their network stream completes.
@@ -695,6 +718,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           );
         })}
         {grouped.trailing.map((proposal) => renderProposal(proposal, locked))}
+        {busy && !replyHasStarted && !error && !streamError ? <ThinkingIndicator /> : null}
       </div>
       {error || streamError ? (
         <p className="error" role="alert">{streamError || chatFailureMessage(error)}</p>

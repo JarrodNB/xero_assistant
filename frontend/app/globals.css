@@ -656,6 +656,112 @@ a.primary {
   border-bottom-right-radius: 4px;
 }
 
+.thinking-indicator {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.thinking-pages {
+  position: relative;
+  display: block;
+  width: 27px;
+  height: 26px;
+  flex: none;
+}
+
+.thinking-pages span {
+  position: absolute;
+  inset: 3px 4px 2px 2px;
+  border: 1px solid var(--green);
+  border-radius: 3px;
+  background: var(--green-soft);
+  transform-origin: bottom left;
+  animation: ledger-page-turn 1.8s ease-in-out infinite;
+}
+
+.thinking-pages span::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  width: 9px;
+  height: 1px;
+  background: var(--green);
+  box-shadow: 0 4px 0 var(--green);
+  opacity: 0.65;
+}
+
+.thinking-pages span:nth-child(1) {
+  animation-delay: -1.2s;
+}
+
+.thinking-pages span:nth-child(2) {
+  animation-delay: -0.6s;
+}
+
+.thinking-pages span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: -5px;
+}
+
+.thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: ledger-dot-hop 900ms ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes ledger-page-turn {
+  0%, 15%, 100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  45%, 65% {
+    transform: rotate(-9deg) translateY(-2px);
+  }
+}
+
+@keyframes ledger-dot-hop {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-pages span,
+  .thinking-dots span {
+    animation: none;
+  }
+}
+
 .proposal {
   align-self: flex-start;
   border: 1px solid var(--amber-line);

@@ -10,7 +10,8 @@ from fastmcp import FastMCP
 
 from app.errors import tool_error
 from app.invoices.gateway import InvoiceServiceError
-from app.invoices.summary import summary_payload
+from app.invoices.summary import summary_payload, validate_date_range
+from app.invoices.schemas import InvoiceSummaryToolPayload, ToolErrorPayload
 from app.mcp_server.context import parse_date, services
 
 
@@ -23,7 +24,7 @@ def register_summarize_invoices(server: FastMCP) -> None:
         status: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
-    ) -> dict:
+    ) -> InvoiceSummaryToolPayload | ToolErrorPayload:
         """Summarize invoice totals, including how much is unpaid or overdue.
 
         When to use: the person asks how much is unpaid, which invoices are overdue, or for a total over a period.
@@ -31,8 +32,10 @@ def register_summarize_invoices(server: FastMCP) -> None:
         Parameters: optional contact_name, status, and YYYY-MM-DD date_from and date_to. Unpaid means authorised with an amount due. Overdue means unpaid and past the due date.
         Example: summarize_invoices() for the current unpaid and overdue totals.
         Example: summarize_invoices(date_from="2026-01-01", date_to="2026-01-31").
+        Result schema v2: currencies contains separate native-currency totals in code order; empty means no invoices. Never add currencies or convert. Incomplete reads return an error; narrow filters.
         """
         try:
+            validate_date_range(parse_date(date_from), parse_date(date_to))
             summary = await services().invoices.summarize_invoices(
                 contact_name,
                 status,

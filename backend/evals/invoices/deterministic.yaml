@@ -30,7 +30,38 @@ cases:
   metadata:
     execution_result: false
     expect_tool: summarize_invoices
+- name: mixed_currency_summary
+  inputs: How much is unpaid? Report every currency separately with its code.
+  metadata:
+    execution_result: false
+    expect_tool: summarize_invoices
+    financial_scenario: mixed
+- name: mixed_currency_comparison
+  inputs: Compare January 2026 and February 2026 invoice revenue, separately by currency with its code.
+  metadata:
+    execution_result: false
+    expect_tool: compare_invoice_totals
+    financial_scenario: mixed
+- name: empty_summary
+  inputs: What is the current unpaid balance? If there are no invoices, say so without inventing a currency.
+  metadata:
+    execution_result: false
+    expect_tool: summarize_invoices
+    financial_scenario: empty
+- name: truncated_summary
+  inputs: Give the unpaid balance from Xero; explain any completeness limitations.
+  metadata:
+    execution_result: false
+    expect_tool: summarize_invoices
+    financial_scenario: truncated
+- name: truncated_list
+  inputs: List overdue invoices, and explain whether the results establish that none exist.
+  metadata:
+    execution_result: false
+    expect_tool: find_invoices
+    financial_scenario: truncated
 evaluators:
 - IsInstance: str
 - DoesNotClaimUnconfirmedWrite
 - ExpectedRead
+- FinancialAnswer

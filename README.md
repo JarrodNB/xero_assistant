@@ -58,13 +58,19 @@ The datasets and evaluation runners are in [backend/evals](backend/evals); API a
 
 ## Run locally
 
-The project uses Docker Compose. Configure a local `.env` using [.env.example](.env.example); a connected demo needs Xero OAuth credentials and an OpenAI API key.
+Run Docker Compose directly from an Ubuntu terminal with Docker Engine and the Compose plugin installed and the daemon accessible to your user. Project dependencies run inside containers. Configure a local `.env` using [.env.example](.env.example); a connected demo needs Xero OAuth credentials and an OpenAI API key.
 
 ```bash
+cd /home/jarrod/Desktop/xero_assistant
+cp -n .env.example .env
 docker compose up --build
 ```
 
 Open [localhost:3001](http://localhost:3001). The backend runs on port 8000.
+
+To rebuild both images without starting the app, run `docker compose build`. Source files are bind-mounted for development; polling remains enabled for reloads. After changing npm dependencies, run `docker compose run --rm --no-deps frontend npm install` to update the dependency volume and commit the updated lockfile. Frontend image builds use `npm ci` to install that locked dependency tree. Check dependency security with `docker compose run --rm --no-deps frontend npm audit`.
+
+Docker named volumes are local to each computer. Moving the repository does not transfer the SQLite database (`assistant-data`) or frontend dependency/cache volumes. Restore a database backup if you need the previous conversations and Xero connection; otherwise sign in and connect Xero again. Rebuilding images preserves existing volumes. Avoid `docker compose down -v` unless you intend to delete local data. Keep `.env` private and do not commit it.
 
 Run the default offline backend suite without provider credentials:
 
@@ -81,7 +87,7 @@ docker compose run --rm --no-deps backend pytest -q --live-evals -m live_eval
 
 The invoices runner supports the same flags. Jev uses `python -m evals.jev.user_message.run --live --case unpaid_total` and requires `TYPESAFE_API_KEY`. Judge runs require `--scoring judge` and use the configured `MODEL` for both answers and judges. Prefer a provider snapshot identifier when measuring regressions; the current model defaults are aliases, so they do not guarantee an immutable snapshot.
 
-Each dataset allows two concurrent cases, 90 seconds per task, and 900 seconds for the whole evaluation including judges. Agent tasks allow 12 requests, 12 tool calls, and 20,000 tokens per case; start with one deterministic case (at most 20,000 task tokens) and review provider billing before expanding. Judge and Jev usage is outside that token budget. A full run selects 62 cases and can incur substantial usage; no live evaluation is run by normal pytest or production chat.
+Each dataset allows two concurrent cases, 90 seconds per task, and 900 seconds for the whole evaluation including judges. Agent tasks allow 12 requests, 12 tool calls, and 20,000 tokens per case; start with one deterministic case (at most 20,000 task tokens) and review provider billing before expanding. Judge and Jev usage is outside that token budget. A full run selects 71 cases and can incur substantial usage; no live evaluation is run by normal pytest or production chat.
 
 JSON artifacts in `backend/evals/artifacts/` contain dataset/prompt hashes, framework version, configured and observed task models, task usage, assertion outcomes, and latency. They omit prompts, outputs, reasons, and exception text. Cost is recorded as unavailable rather than zero because the runners lack billing data; judge/Jev usage is also unavailable. Artifacts are git-ignored local evidence; delete them after 30 days and retain only reviewed summaries when publishing results. Failed assertions, task/evaluator exceptions, empty reports, duplicate cases, and missing cases all fail the run.
 
@@ -107,3 +113,17 @@ Optional Langfuse export samples 10% of AI workflows by default and exports meta
 ## Project scope
 
 Ledger is a portfolio project built around one connected Xero Demo Company and shared demo sign-in. Its implemented workflows cover contacts and sales invoices. Production multi-tenant access, broader accounting workflows, and production deployment are outside the current scope.
+
+## Currency totals and bounded reads
+
+Invoice lists and totals use response schema `2`. Summaries and period comparisons report an alphabetically ordered `currencies` array; AUD 100 and USD 100 remain two amounts. There is no exchange-rate conversion or mixed-currency grand total. Empty results have an empty array, with no assumed currency. Comparisons align the currencies occurring in either period and use zero for a currency absent from one period. Totals require valid invoice currency codes.
+
+Each Xero invoice read retains at most 2,000 invoices and fetch one extra page only when needed to distinguish an exact-cap result from truncation. Lists expose `complete`, `scanned_count`, `limit`, and `next_step`. Partial lists are labelled in the UI; their emptiness cannot prove no invoices exist. Summaries and comparisons reject incomplete reads and ask for narrower contact, status, or date filters. Contact searches are also bounded; invoice contact filters resolve up to 100 matching contact IDs and apply them in Xero before the invoice cap. Comparisons query each requested period separately (at most 2,000 invoices per period), excluding irrelevant gap dates and deduplicating overlaps. Reversed date ranges are rejected. Browser acceptance remains user-run.
+
+The invoices deterministic dataset now includes synthetic mixed-currency summary/comparison, empty, truncated-summary, and truncated-list cases with mechanical answer checks. To run one paid case deliberately:
+
+```bash
+docker compose run --rm --no-deps backend python -m evals.invoices.run --live --case mixed_currency_summary
+```
+
+Offline tests verify the math, HTTP/MCP contracts, cap boundaries, evaluator checks, and actual list-page interactions. No live evaluation or Xero verification is implied by those tests.

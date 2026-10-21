@@ -28,3 +28,5 @@ Confirmation follow-ups use bounded recorded-status narration without receipt or
 `routes.py` puts preparation, summary, screening, model work, and tools under one deadline, with context cleanup in the stream task. Sanitize native failures before protocol conversion. Never flush a partially restored token on interruption or discard already-stored proposals. Only completed replies are saved.
 
 Summary folding is separately bounded, defaults to one block per turn, and retains the last saved summary/coverage on a failed block. Always bound the recent stored tail, including when folding is disabled. Warn the model when earlier context is unavailable. Regression coverage lives in `tests/test_ai_execution.py`; live model evaluations remain opt-in.
+
+Financial replies must preserve native currency codes and separate amounts. Partial reads cannot prove totals or absence; explain the limitation and request narrower filters. Empty groups imply no matching invoices, never a default currency. Prompt hashes version these instructions automatically.

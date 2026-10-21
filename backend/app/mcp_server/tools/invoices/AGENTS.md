@@ -10,3 +10,5 @@ These tools read invoices and compute totals. They identify invoices by the numb
 - `get_invoice.py` — load one invoice by its number
 - `summarize_invoices.py` — unpaid, overdue, and period totals
 - `compare_invoice_totals.py` — compare two date ranges
+
+Financial read tools expose typed v2 success/error unions (FastMCP structured result envelope). Lists propagate complete/scanned_count/limit/next_step; partial empty lists cannot establish absence. Summary/comparison failures expose no amounts when the bounded read is incomplete. Explain separate native currency groups, empty groups, and zero-filled period alignment in descriptions. Preserve versioned output schemas and shared pure totals.

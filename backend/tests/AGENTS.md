@@ -31,7 +31,7 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 
 ## Evaluation workflow (Phase 3)
 
-Ordinary `pytest -q` runs offline tests and skips `live_eval` cases. Paid tests require `pytest -q --live-evals -m live_eval`; runner CLIs require `--live`, default to deterministic scoring, and support repeated `--case NAME` selections. Agent runners also support `--scoring judge`. Run through Docker Compose in Ubuntu WSL. No production chat request runs these datasets.
+Ordinary `pytest -q` runs offline tests and skips `live_eval` cases. Paid tests require `pytest -q --live-evals -m live_eval`; runner CLIs require `--live`, default to deterministic scoring, and support repeated `--case NAME` selections. Agent runners also support `--scoring judge`. Run through Docker Compose in Ubuntu. No production chat request runs these datasets.
 
 Every selected case must appear exactly once with nonempty all-true assertions. Task failures and evaluator exceptions are separate failure channels and both must fail the run. Judge approval never bypasses deterministic write-claim or proposal checks. Shared validation and safe artifact handling live in `evals/reporting.py`; offline regression coverage is in `tests/test_eval_reporting.py`.
 
@@ -40,3 +40,5 @@ Use one deterministic case first. Concurrency is two, task deadline 90 seconds, 
 Artifacts under `evals/artifacts/` are local and git-ignored. Retain only allowlisted metadata (versions/hashes, model identifiers, task usage, assertion booleans, latency); never persist prompts, answers, reasons, or exception bodies. Billing cost and judge/Jev usage are explicitly unavailable. Delete artifacts after 30 days; publish only reviewed summaries.
 - `test_ai_execution.py` — authoritative parent/child limits, safe streaming failures, deadlines at preparation/provider/tool boundaries, summary fallback, provider policy, and cancellation isolation.
 - `test_observability.py` also verifies actual SDK finished-span sanitization. Tests clear tracing credentials to prevent remote exports.
+
+- test_financial_completeness.py covers currency grouping, period alignment, empty/missing currency, reversed dates, cap/lookahead boundaries, upstream filtering, malformed pages, contact truncation, typed HTTP/MCP schemas, and deterministic answer checks. No providers or live Xero are used.

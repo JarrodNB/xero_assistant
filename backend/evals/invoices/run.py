@@ -19,11 +19,11 @@ from app.chat.invoices_agent import build_invoices_agent
 from app.config import get_settings
 from app.mcp_server.server import build_mcp_server
 from evals.checks import DoesNotClaimUnconfirmedWrite
-from evals.invoices.evaluators import ExpectedRead
+from evals.invoices.evaluators import ExpectedRead, FinancialAnswer
+from evals.invoices.fixtures import financial_gateway
 from evals.scoring import Scoring
 from evals.reporting import evaluate_dataset, live_cli
 from evals.turn import run_scored_prompt
-from tests.fakes import FakeInvoiceGateway
 
 DETERMINISTIC_PATH = Path(__file__).with_name("deterministic.yaml")
 JUDGE_PATH = Path(__file__).with_name("judge.yaml")
@@ -34,7 +34,7 @@ def load_invoices_dataset(scoring: Scoring) -> Dataset:
     if scoring == "deterministic":
         return Dataset[str, str, Any].from_file(
             DETERMINISTIC_PATH,
-            custom_evaluator_types=[DoesNotClaimUnconfirmedWrite, ExpectedRead],
+            custom_evaluator_types=[DoesNotClaimUnconfirmedWrite, ExpectedRead, FinancialAnswer],
         )
     dataset = Dataset[str, str, Any].from_file(JUDGE_PATH)
     dataset.evaluators.append(DoesNotClaimUnconfirmedWrite())
@@ -51,10 +51,11 @@ async def evaluate_invoices_dataset(model, directory: Path, *, scoring: Scoring,
         if {case.name for case in dataset.cases} != case_names:
             raise ValueError("Unknown invoices evaluation case name")
     agent = build_invoices_agent(model, build_mcp_server())
-    gateway = FakeInvoiceGateway()
+    scenarios = {case.inputs: (case.metadata or {}).get("financial_scenario") for case in dataset.cases}
 
     async def answer(prompt: str) -> str:
         """Answer one invoices case without writing to Xero."""
+        gateway = financial_gateway(scenarios[prompt])
         return await asyncio.wait_for(run_scored_prompt(agent, gateway, directory, prompt), timeout=90)
 
     return await evaluate_dataset(dataset, answer, live=live,

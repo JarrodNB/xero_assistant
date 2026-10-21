@@ -16,3 +16,5 @@ Shared browser and server helpers live here. Pages import these modules instead 
 - `api.ts` — session lookup and JSON calls through `/api/backend`
 - `types.ts` — invoice, contact, conversation, and proposed-action shapes
 - `xeroProxy.ts` — forward an OAuth redirect to FastAPI and keep the browser on this host
+
+Phase 5 invoice read/summary/comparison types use schema_version 2 and explicit completeness. Amounts belong to currency groups; do not add an unlabeled grand total. InvoiceReadResult carries partial-read recovery guidance.

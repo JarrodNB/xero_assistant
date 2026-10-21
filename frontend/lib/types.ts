@@ -8,6 +8,7 @@
  * - ProposedAction
  * - ConversationSummary
  * - StoredMessage
+ * - CurrencySummary, InvoiceSummary, InvoiceReadResult, PeriodComparison
  */
 
 export type LineItem = {
@@ -35,6 +36,40 @@ export type Invoice = {
 export type Contact = {
   name: string;
   email: string | null;
+};
+
+export type CurrencySummary = {
+  currency: string;
+  invoice_count: number;
+  unpaid_count: number;
+  overdue_count: number;
+  unpaid_total: number;
+  overdue_total: number;
+  invoice_total: number;
+};
+
+export type InvoiceSummary = {
+  schema_version: "2";
+  complete: true;
+  invoice_count: number;
+  unpaid_count: number;
+  overdue_count: number;
+  currencies: CurrencySummary[];
+};
+
+export type InvoiceReadResult = {
+  schema_version: "2";
+  invoices: Invoice[];
+  complete: boolean;
+  scanned_count: number;
+  limit: number;
+  next_step: string | null;
+};
+
+export type PeriodComparison = {
+  schema_version: "2";
+  complete: true;
+  currencies: { currency: string; period_a_total: number; period_b_total: number; difference: number }[];
 };
 
 export type ProposedAction = {

@@ -13,9 +13,10 @@ from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, Upd
 from app.actions.service import load_action, run_confirmed_action
 from app.auth.routes import require_user
 from app.errors import ApiError
-from app.invoices.gateway import InvoiceNotFoundError, InvoiceServiceError
+from app.invoices.gateway import InvoiceNotFoundError, InvoiceServiceError, read_payload
 from app.invoices.records import contact_payload, invoice_payload
-from app.invoices.summary import comparison_payload, summary_payload
+from app.invoices.schemas import InvoiceListPayload, InvoiceSummaryPayload, PeriodComparisonPayload
+from app.invoices.summary import comparison_payload, summary_payload, validate_date_range
 from app.runtime import AppServices
 
 router = APIRouter(tags=["invoices"])
@@ -56,14 +57,17 @@ async def list_invoices(
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-) -> dict[str, object]:
+) -> InvoiceListPayload:
     """List invoices for the invoice screen."""
     services = _services(request)
     try:
+        validate_date_range(date_from, date_to)
         invoices = await services.invoices.find_invoices(contact_name, status, date_from, date_to)
+    except ValueError as error:
+        raise ApiError(422, "Date range is invalid", str(error), False, "Use a start date on or before the end date.") from error
     except InvoiceServiceError as error:
         _raise_service_error(error)
-    return {"invoices": [invoice_payload(invoice) for invoice in invoices]}
+    return {**read_payload(invoices), "invoices": [invoice_payload(invoice) for invoice in invoices.invoices]}
 
 
 @router.get("/invoices/{invoice_number}")
@@ -112,11 +116,14 @@ async def invoice_summary(
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-) -> dict[str, object]:
+) -> InvoiceSummaryPayload:
     """Return unpaid, overdue, and total figures for the current filters."""
     services = _services(request)
     try:
+        validate_date_range(date_from, date_to)
         summary = await services.invoices.summarize_invoices(contact_name, status, date_from, date_to, date.today())
+    except ValueError as error:
+        raise ApiError(422, "Invoice summary is invalid", str(error), False, "Check the date range and invoice currencies.") from error
     except InvoiceServiceError as error:
         _raise_service_error(error)
     return summary_payload(summary)
@@ -129,16 +136,20 @@ async def invoice_comparison(
     period_a_end: date,
     period_b_start: date,
     period_b_end: date,
-) -> dict[str, float]:
+) -> PeriodComparisonPayload:
     """Compare recognised invoice totals for two date ranges."""
     services = _services(request)
     try:
+        validate_date_range(period_a_start, period_a_end)
+        validate_date_range(period_b_start, period_b_end)
         comparison = await services.invoices.compare_invoice_totals(
             period_a_start,
             period_a_end,
             period_b_start,
             period_b_end,
         )
+    except ValueError as error:
+        raise ApiError(422, "Invoice comparison is invalid", str(error), False, "Check the date ranges and invoice currencies.") from error
     except InvoiceServiceError as error:
         _raise_service_error(error)
     return comparison_payload(comparison)

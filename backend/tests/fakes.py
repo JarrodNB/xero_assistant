@@ -8,9 +8,9 @@ from datetime import date
 from decimal import Decimal
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, UpdateInvoicePayload, VoidInvoicePayload
-from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError
+from app.invoices.gateway import ContactNotFoundError, InvoiceNotFoundError, InvoiceServiceError, InvoiceReadResult
 from app.invoices.records import ContactRecord, InvoiceRecord, LineItemRecord, newest_first
-from app.invoices.summary import PeriodComparison, compare_invoice_periods, summarize_invoice_records
+from app.invoices.summary import PeriodComparison, compare_invoice_periods, summarize_invoice_records, validate_date_range
 
 
 class FakeInvoiceGateway:
@@ -44,8 +44,9 @@ class FakeInvoiceGateway:
         status: str | None,
         date_from: date | None,
         date_to: date | None,
-    ) -> list[InvoiceRecord]:
+    ) -> InvoiceReadResult:
         """Return invoices matching the filters, newest issue date first."""
+        validate_date_range(date_from, date_to)
         self.read_calls.append("find_invoices")
         rows = self.invoices
         if contact_name:
@@ -57,7 +58,7 @@ class FakeInvoiceGateway:
             rows = [invoice for invoice in rows if invoice.issued_on and invoice.issued_on >= date_from]
         if date_to:
             rows = [invoice for invoice in rows if invoice.issued_on and invoice.issued_on <= date_to]
-        return newest_first(rows)
+        return InvoiceReadResult(newest_first(rows), scanned_count=len(rows))
 
     async def get_invoice(self, invoice_number: str) -> InvoiceRecord:
         """Return one invoice."""
@@ -79,7 +80,7 @@ class FakeInvoiceGateway:
         self.read_calls.append("summarize_invoices")
         invoices = await self.find_invoices(contact_name, status, date_from, date_to)
         self.read_calls.pop()
-        return summarize_invoice_records(invoices, today)
+        return summarize_invoice_records(invoices.require_complete(), today)
 
     async def compare_invoice_totals(
         self,
@@ -90,8 +91,12 @@ class FakeInvoiceGateway:
     ) -> PeriodComparison:
         """Compare recognised totals in memory."""
         self.read_calls.append("compare_invoice_totals")
+        validate_date_range(period_a_start, period_a_end)
+        validate_date_range(period_b_start, period_b_end)
+        read = await self.find_invoices(None, None, min(period_a_start, period_b_start), max(period_a_end, period_b_end))
+        self.read_calls.pop()
         return compare_invoice_periods(
-            self.invoices,
+            read.require_complete(),
             period_a_start,
             period_a_end,
             period_b_start,

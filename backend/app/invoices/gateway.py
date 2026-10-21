@@ -5,9 +5,12 @@ Public API:
 - ContactNotFoundError
 - InvoiceNotFoundError
 - InvoiceServiceError
+- InvoiceReadResult
+- read_payload
 """
 
 from datetime import date
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.actions.payloads import CreateContactPayload, CreateInvoicePayload, UpdateInvoicePayload, VoidInvoicePayload
@@ -46,6 +49,33 @@ class InvoiceServiceError(Exception):
         super().__init__(what)
 
 
+@dataclass(frozen=True)
+class InvoiceReadResult:
+    """Bounded invoice records with explicit completeness before local filtering."""
+
+    invoices: list[InvoiceRecord]
+    complete: bool = True
+    scanned_count: int = 0
+    limit: int = 2000
+
+    def require_complete(self) -> list[InvoiceRecord]:
+        """Prevent definitive aggregates or absence claims from a truncated read."""
+        if not self.complete:
+            raise InvoiceServiceError(
+                "Invoice results are incomplete", "The bounded Xero read has more matching records.",
+                False, "Narrow the date range, contact, or status filters and try again.",
+            )
+        return self.invoices
+
+
+def read_payload(result: InvoiceReadResult) -> dict[str, object]:
+    """Expose completeness and recovery guidance consistently to HTTP and MCP callers."""
+    return {"schema_version": "2", "complete": result.complete,
+            "scanned_count": result.scanned_count, "limit": result.limit,
+            "next_step": None if result.complete else
+            "Results are partial. Narrow the date range, contact, or status filters and try again."}
+
+
 class InvoiceGateway(Protocol):
     """Read and write invoices without exposing Xero ids."""
 
@@ -61,7 +91,7 @@ class InvoiceGateway(Protocol):
         status: str | None,
         date_from: date | None,
         date_to: date | None,
-    ) -> list[InvoiceRecord]:
+    ) -> InvoiceReadResult:
         """Return invoices matching the filters."""
 
     async def get_invoice(self, invoice_number: str) -> InvoiceRecord:

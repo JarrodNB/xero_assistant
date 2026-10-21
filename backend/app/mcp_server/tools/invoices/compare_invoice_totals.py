@@ -8,7 +8,8 @@ from fastmcp import FastMCP
 
 from app.errors import tool_error
 from app.invoices.gateway import InvoiceServiceError
-from app.invoices.summary import comparison_payload
+from app.invoices.summary import comparison_payload, validate_date_range
+from app.invoices.schemas import PeriodComparisonToolPayload, ToolErrorPayload
 from app.mcp_server.context import require_date, services
 
 
@@ -21,15 +22,18 @@ def register_compare_invoice_totals(server: FastMCP) -> None:
         period_a_end: str,
         period_b_start: str,
         period_b_end: str,
-    ) -> dict:
+    ) -> PeriodComparisonToolPayload | ToolErrorPayload:
         """Compare recognised invoice totals for two date ranges.
 
         When to use: the person asks whether revenue is up or down between two periods.
         When not to use: the person wants the current unpaid balance. Use summarize_invoices instead.
         Parameters: four YYYY-MM-DD dates. Totals include authorised and paid invoices, and exclude drafts and voided invoices.
         Example: compare_invoice_totals(period_a_start="2026-01-01", period_a_end="2026-01-31", period_b_start="2026-02-01", period_b_end="2026-02-28").
+        Result schema v2: currencies aligns native currencies in code order, with zero for a missing period; empty means no recognised invoices. Never sum currencies. Incomplete reads return an error; narrow periods.
         """
         try:
+            validate_date_range(require_date(period_a_start), require_date(period_a_end))
+            validate_date_range(require_date(period_b_start), require_date(period_b_end))
             comparison = await services().invoices.compare_invoice_totals(
                 require_date(period_a_start),
                 require_date(period_a_end),
