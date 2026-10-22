@@ -1,90 +1,143 @@
 /**
- * Purpose: Read-only, source-backed accounting performance workspace.
+ * Purpose: Compare source-backed accounting performance with explicit dates and evidence.
  * Public API:
  * - PerformancePage
  */
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../../../lib/api";
-import { FinancialReport, ReportRow } from "../../../lib/reports";
+import { AmountComparison, ReportComparison } from "../../../lib/reports";
+import { EvidenceLink, ReportSources } from "./ReportSources";
 
-/** Keep source labels, subtotals and exact amount strings in their reported sections. */
-function SourceRows({ rows, currency }: { rows: ReportRow[]; currency: string }) {
-  const groups: ReportRow[][] = [];
-  for (const row of rows) {
-    const preceding = groups[groups.length - 1];
-    if (row.kind !== "section" && preceding?.[0].kind !== "section") preceding ? preceding.push(row) : groups.push([row]);
-    else groups.push([row]);
-  }
-  return <>{groups.map((group) => {
-    const row = group[0];
-    return row.kind === "section" ? (
-      <details className="report-section" key={row.key} open>
-        <summary id={row.key}>{row.label || "Report totals"}</summary>
-        <SourceRows rows={row.children} currency={currency} />
-        {row.children.length === 0 ? <p className="muted">No rows in this section.</p> : null}
-      </details>
-    ) : (
-      <table className="report-source-table" key={row.key}>
-        <tbody>{group.map((item) => <tr id={item.key} key={item.key} className={item.kind === "summary" ? "report-total" : undefined}>
-          <th scope="row"><a className="table-link" href={`#${item.key}`} aria-label={`Source row: ${item.label}`}>{item.label}</a></th>
-          <td className="money">{item.amount} {currency}</td>
-        </tr>)}</tbody>
-      </table>
-    );
-  })}</>;
+type Preset = "previous_period" | "previous_year" | "custom";
+type Dates = { from: string; to: string; comparisonFrom: string; comparisonTo: string };
+const EMPTY_DATES: Dates = { from: "", to: "", comparisonFrom: "", comparisonTo: "" };
+
+/** Render monetary changes without converting precise decimal strings to browser numbers. */
+function Change({ amount, currency }: { amount: AmountComparison; currency: string }) {
+  return <>{amount.change} {currency}<span className="report-percentage">
+    {amount.percentage_change === null ? amount.percentage_note || "Percentage unavailable" : amount.percentage_change + "%"}
+  </span></>;
 }
 
-/** Show a validated report and recover explicitly from disabled or missing report access. */
+/** Inspect comparative financial figures and their source rows without model or write calls. */
 export default function PerformancePage() {
-  const [report, setReport] = useState<FinancialReport | null>(null);
+  const [report, setReport] = useState<ReportComparison | null>(null);
+  const [dates, setDates] = useState<Dates>(EMPTY_DATES);
+  const [preset, setPreset] = useState<Preset>("previous_period");
+  const [selection, setSelection] = useState({ query: "", revision: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiRequestError | null>(null);
-  const [refresh, setRefresh] = useState(0);
+  const [dateError, setDateError] = useState("");
+  const draftRevision = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestedDraftRevision = draftRevision.current;
     let active = true;
-    setLoading(true);
-    setError(null);
-    setReport(null);
-    /** Retrieve the organisation's last completed month without trusting the browser timezone. */
+    setLoading(true); setError(null); setReport(null);
+    /** Resolve defaults on the server and ignore responses from superseded selections. */
     async function load() {
       try {
-        const result = await apiRequest<FinancialReport>("/api/backend/reports/profit-and-loss", { signal: controller.signal });
-        if (active) setReport(result);
+        const result = await apiRequest<ReportComparison>("/api/backend/reports/profit-and-loss/comparison" + selection.query, { signal: controller.signal });
+        if (active) {
+          setReport(result);
+          if (draftRevision.current === requestedDraftRevision) {
+            setDates({ from: result.current.date_from, to: result.current.date_to,
+              comparisonFrom: result.comparison.date_from, comparisonTo: result.comparison.date_to });
+          }
+        }
       } catch (caught) {
         if (active) setError(caught instanceof ApiRequestError ? caught : new ApiRequestError("Report could not be loaded", "No validated figures are available.", "Try again later."));
-      } finally {
-        if (active) setLoading(false);
-      }
+      } finally { if (active) setLoading(false); }
     }
     void load();
     return () => { active = false; controller.abort(); };
-  }, [refresh]);
+  }, [selection]);
 
+  /** Apply complete ranges; the server validates future dates using organisation time. */
+  function applyDates(event: FormEvent) {
+    event.preventDefault();
+    const required = preset === "custom" ? Object.values(dates) : [dates.from, dates.to];
+    if (required.some((value) => !/^\d{4}-\d{2}-\d{2}$/.test(value)) || dates.from > dates.to ||
+        (preset === "custom" && dates.comparisonFrom > dates.comparisonTo)) {
+      setDateError("Choose complete date ranges with each start on or before its end."); return;
+    }
+    setDateError("");
+    const query = new URLSearchParams({ date_from: dates.from, date_to: dates.to, preset });
+    if (preset === "custom") { query.set("comparison_from", dates.comparisonFrom); query.set("comparison_to", dates.comparisonTo); }
+    setSelection((current) => ({ query: "?" + query, revision: current.revision + 1 }));
+  }
+
+  /** Update one draft date without mislabelling the displayed report as already refreshed. */
+  function setDate(key: keyof Dates, value: string) {
+    draftRevision.current += 1;
+    setDates((current) => ({ ...current, [key]: value }));
+  }
+
+  const currency = report?.current.currency || "";
   return <section className="performance-page">
     <div className="page-header"><h1>Performance</h1>
-      <button type="button" className="secondary" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh report</button>
+      <button type="button" className="secondary" disabled={loading} onClick={() => setSelection((current) => ({ ...current, revision: current.revision + 1 }))}>Refresh report</button>
     </div>
     <h2>Profit and loss</h2>
-    <p className="muted">Income, costs, and profit for the last completed month. Expand a section to inspect its source rows.</p>
-    {loading ? <p role="status">Loading the report from Xero…</p> : null}
+    <p className="muted">Compare income, costs, and profit. Changes describe reported amounts; their business causes require further evidence.</p>
+    <form className="report-filters" onSubmit={applyDates}>
+      <label>Current period start<input type="date" required value={dates.from} onChange={(event) => setDate("from", event.target.value)} /></label>
+      <label>Current period end<input type="date" required value={dates.to} onChange={(event) => setDate("to", event.target.value)} /></label>
+      <label>Compare with<select value={preset} onChange={(event) => setPreset(event.target.value as Preset)}>
+        <option value="previous_period">Previous period</option><option value="previous_year">Previous year</option><option value="custom">Custom dates</option>
+      </select></label>
+      {preset === "custom" ? <>
+        <label>Comparison period start<input type="date" required value={dates.comparisonFrom} onChange={(event) => setDate("comparisonFrom", event.target.value)} /></label>
+        <label>Comparison period end<input type="date" required value={dates.comparisonTo} onChange={(event) => setDate("comparisonTo", event.target.value)} /></label>
+      </> : null}
+      <button className="primary" type="submit">Apply comparison</button>
+      <p className="muted report-filter-note">Apply dates to update the report. Defaults use the last two completed months in organisation time.</p>
+      {dateError ? <p role="alert">{dateError}</p> : null}
+    </form>
+    {loading ? <p role="status">Loading reports from Xero…</p> : null}
     {error ? <div className="report-error" role="alert">
       <h3>{error.message}</h3><p>{error.why}</p><p>{error.nextStep}</p>
       {error.statusCode === 403 ? <a className="primary" href="/api/xero/start">Reconnect Xero for reports</a> : null}
     </div> : null}
     {report ? <>
       <dl className="report-metadata">
-        <div><dt>Period</dt><dd>{report.date_from} to {report.date_to}</dd></div>
-        <div><dt>Basis and currency</dt><dd>Accrual · {report.currency}</dd></div>
-        <div><dt>Organisation timezone</dt><dd>{report.timezone}</dd></div>
-        <div><dt>Retrieved</dt><dd><time dateTime={report.retrieved_at}>{report.retrieved_at}</time></dd></div>
+        <div><dt>Current period</dt><dd>{report.current.date_from} to {report.current.date_to}</dd></div>
+        <div><dt>Comparison period</dt><dd>{report.comparison.date_from} to {report.comparison.date_to}</dd></div>
+        <div><dt>Basis and currency</dt><dd>Accrual · {currency}</dd></div>
+        <div><dt>Organisation timezone</dt><dd>{report.current.timezone}</dd></div>
+        <div><dt>Retrieved</dt><dd>Current: <time dateTime={report.current.retrieved_at}>{report.current.retrieved_at}</time><br />Comparison: <time dateTime={report.comparison.retrieved_at}>{report.comparison.retrieved_at}</time></dd></div>
       </dl>
-      {report.status === "empty" ? <p role="status">Xero returned no report data for this period. No profit amount has been inferred.</p> : (
-        <div className="panel report-source" aria-label="Profit and loss source rows"><SourceRows rows={report.rows} currency={report.currency} /></div>
-      )}
+      {report.warnings.map((warning) => <p className="report-warning" key={warning}>{warning}</p>)}
+      {report.status === "empty" ? <p role="status">Xero returned no report data for at least one period. No profit change has been inferred.</p> : <>
+        <div className="report-table-scroll"><table className="report-comparison-table" aria-label="Profit and loss comparison">
+          <thead><tr><th scope="col">Measure</th><th scope="col">Current</th><th scope="col">Comparison</th><th scope="col">Change</th></tr></thead>
+          <tbody>{Object.entries(report.metrics).map(([name, amount]) => <tr key={name}>
+            <th scope="row">{name === "net_profit" ? "Net profit" : name === "income" ? "Income" : "Expenses"}</th>
+            <td className="money">{amount.current} {currency}</td><td className="money">{amount.comparison} {currency}</td><td className="money"><Change amount={amount} currency={currency} /></td>
+          </tr>)}</tbody>
+        </table></div>
+        <h2>Largest profit contributors</h2>
+        <p>Account movements contributing most to the profit change. Increased expenses reduce profit; expense credits can increase it.</p>
+        <ol className="report-contributors">{report.top_movements.map((movement) => <li key={movement.key}>
+          <EvidenceLink source={movement.current_source || movement.comparison_source}>{movement.label}</EvidenceLink>: <strong>{movement.contribution} {currency}</strong>
+        </li>)}</ol>
+        {report.top_movements.length === 0 ? <p>No changing accounts in these reports.</p> : null}
+        <p>Other movements and rounding remainder: {report.other_movements} {currency}</p>
+        <h2>Account movements</h2>
+        <div className="report-table-scroll"><table className="report-comparison-table" aria-label="Account movements">
+          <thead><tr><th scope="col">Account</th><th scope="col">Current</th><th scope="col">Comparison</th><th scope="col">Amount change</th><th scope="col">Profit contribution</th></tr></thead>
+          <tbody>{report.movements.map((movement) => <tr key={movement.key}>
+            <th scope="row">{movement.label}{movement.previous_label ? <span className="report-percentage">Previously: {movement.previous_label}</span> : null}</th>
+            <td className="money"><EvidenceLink source={movement.current_source}>{movement.current} {currency}</EvidenceLink></td>
+            <td className="money"><EvidenceLink source={movement.comparison_source}>{movement.comparison} {currency}</EvidenceLink></td>
+            <td className="money"><Change amount={movement} currency={currency} /></td><td className="money">{movement.contribution} {currency}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </>}
+      <ReportSources current={report.current} comparison={report.comparison} />
     </> : null}
   </section>;
 }

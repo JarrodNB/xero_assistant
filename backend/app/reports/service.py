@@ -8,10 +8,13 @@ import asyncio
 import re
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from typing import Literal
 
 from app.errors import ApiError
-from app.reports.models import FinancialReport
+from app.reports.models import FinancialReport, ReportComparison
+from app.reports.comparison import compare_profit_and_loss
 from app.reports.normalization import normalize_profit_and_loss, unsupported_report
+from app.reports.periods import resolve_profit_periods
 from app.xero.client import XeroApiError, XeroClient
 
 # Xero returns Windows timezone names, not necessarily IANA identifiers.
@@ -97,3 +100,37 @@ class ReportService:
         except ZoneInfoNotFoundError as error:
             raise unsupported_report() from error
         return currency, zone
+
+    async def compare_profit_and_loss(self, date_from: date | None = None, date_to: date | None = None,
+                                     comparison_from: date | None = None, comparison_to: date | None = None,
+                                     preset: Literal["previous_period", "previous_year", "custom"] = "previous_period") -> ReportComparison:
+        """Read two P&Ls and reconcile their movements under one operation deadline."""
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                currency, zone = await self._organisation()
+                dates = resolve_profit_periods(datetime.now(ZoneInfo(zone)).date(), date_from, date_to,
+                                               comparison_from, comparison_to, preset)
+                current = await self._profit_report(dates[0], dates[1], currency, zone)
+                previous = await self._profit_report(dates[2], dates[3], currency, zone)
+                return compare_profit_and_loss(current, previous)
+        except TimeoutError as error:
+            raise ApiError(504, "Report request timed out", "Xero did not return both complete reports within the operation deadline.",
+                           True, "Try again later. No partial comparison was used.") from error
+        except XeroApiError as error:
+            if error.status_code in {401, 403, 409}:
+                raise ApiError(403, "Report access required", "The Xero connection or user does not have report access.",
+                               False, "Reconnect Xero and grant report permissions using an account allowed to view reports.") from error
+            if error.status_code == 413:
+                raise ApiError(413, "Report is too large", "Xero's response exceeds the report byte limit.", False,
+                               "Choose a narrower date range or inspect the report in Xero.") from error
+            raise ApiError(503, "Report is unavailable", "Xero did not return a usable comparison.", True,
+                           "Try again later or inspect the reports in Xero. No figures were inferred.") from error
+
+    async def _profit_report(self, start: date, end: date, currency: str, zone: str) -> FinancialReport:
+        """Fetch one validated range using metadata already read for this operation."""
+        body = await self._client.get_bounded("/Reports/ProfitAndLoss", {"fromDate": start.isoformat(), "toDate": end.isoformat(),
+                                                                       "standardLayout": "true", "paymentsOnly": "false"})
+        rows = normalize_profit_and_loss(body, start, end)
+        return FinancialReport(status="ready" if rows else "empty", date_from=start, date_to=end,
+                               currency=currency, currency_decimal_places=CURRENCY_DECIMAL_PLACES[currency],
+                               timezone=zone, retrieved_at=datetime.now(timezone.utc), rows=rows)

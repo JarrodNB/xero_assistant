@@ -48,7 +48,7 @@ def report_client(tmp_path, body=None, status=200, enabled=True, organisation=No
             return httpx.Response(200, json={"Organisations": [organisation or {"BaseCurrency": "AUD", "Timezone": "UTC"}]})
         if isinstance(body, httpx.Response):
             return body
-        return httpx.Response(status, json=body if body is not None else report_body())
+        return httpx.Response(status, json=body(request) if callable(body) else body if body is not None else report_body())
     settings = Settings(app_username="interviewer", app_password_hash=os.environ["APP_PASSWORD_HASH"],
                         session_secret="report-test", database_path=str(tmp_path / "reports.db"))
     settings = settings.model_copy(update={"performance_reports_enabled": enabled})
