@@ -37,6 +37,8 @@ def compare_profit_and_loss(current: FinancialReport, previous: FinancialReport)
     if (current.date_to - current.date_from).days != (previous.date_to - previous.date_from).days:
         warnings.append("The selected P&L periods have unequal lengths; interpret changes with care.")
     if current.status == "empty" or previous.status == "empty":
+        validate_profit_and_loss(current)
+        validate_profit_and_loss(previous)
         return ReportComparison(status="empty", current=current, comparison=previous, warnings=warnings + [
             "At least one period has no report data. No totals or account changes have been inferred."])
     with localcontext() as context:

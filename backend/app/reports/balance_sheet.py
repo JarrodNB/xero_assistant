@@ -2,6 +2,7 @@
 
 Public API:
 - compare_balance_sheets
+- validate_balance_sheet
 - resolve_position_dates
 """
 
@@ -70,6 +71,8 @@ def compare_balance_sheets(current: BalanceSheetReport, previous: BalanceSheetRe
     warnings = ["The two reports are separate reads, not an atomic accounting snapshot.",
                 "Balance-sheet changes describe positions at dates, not profit contributions or cash flows."]
     if current.status == "empty" or previous.status == "empty":
+        validate_balance_sheet(current)
+        validate_balance_sheet(previous)
         return BalanceSheetComparison(status="empty", current=current, comparison=previous, warnings=warnings + ["At least one date has no report data. No position changes were inferred."])
     with localcontext() as context:
         context.prec = 50
@@ -147,3 +150,12 @@ def _validate(report: BalanceSheetReport, tolerance: Decimal) -> tuple[dict[str,
     if "liabilities_and_equity" in reported and abs(reported["liabilities_and_equity"] - totals["assets"]) > tolerance:
         raise unsupported_report()
     return accounts, totals
+
+
+def validate_balance_sheet(report: BalanceSheetReport) -> None:
+    """Validate each available position independently of the other comparison source."""
+    if report.status == "empty":
+        return
+    with localcontext() as context:
+        context.prec = 50
+        _validate(report, Decimal(1).scaleb(-report.currency_decimal_places))

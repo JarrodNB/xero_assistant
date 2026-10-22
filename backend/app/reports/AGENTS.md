@@ -23,3 +23,5 @@ Single P&L uses two bounded GETs (organisation and report) under one configured 
 - `context.py` — expiring signed public dates/nonce plus opaque tenant/account HMACs; refetch and unique identity matching; no encoded private IDs or retained snapshots. Comparison results include optional explanation_context selectors and have a configured post-decoration byte limit.
 
 The app owns one ReportService so HTTP and chat share the per-process rolling rate limit. `_operation` pins trusted tenant identity across metadata and report GETs and rejects reconnects. Do not construct a fresh service per request or use movement-N/position-N as refreshed identity. `/explanation-source` revalidates the token and refetches both reports before returning the newly matched public key. Deleted/ambiguous/tampered/expired/cross-tenant context fails closed.
+
+An empty comparison does not relax source validation. Validate every populated source before returning or disclosing its rows, even when the other source is empty. Shared single-source validation preserves the same precision and reconciliation policy in standalone and comparison paths.

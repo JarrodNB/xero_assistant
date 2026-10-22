@@ -188,3 +188,21 @@ def test_balance_sheet_is_authenticated_and_flagged(api, tmp_path):
     with disabled:
         assert disabled.get("/reports/balance-sheet/comparison").status_code == 503
     assert calls == []
+
+
+@pytest.mark.parametrize("empty_current", [True, False])
+def test_empty_position_cannot_hide_invalid_populated_source(tmp_path, empty_current):
+    """An empty date cannot publish an unreconciled balance-sheet source as complete."""
+    def mixed(request):
+        """Pair one genuinely empty position with an invalid accounting identity."""
+        current = request.url.params["date"] == "2026-02-28"
+        if current == empty_current:
+            return {"Reports": []}
+        body = balance_body(request)
+        body["Reports"][0]["Rows"][-1]["Rows"][0]["Cells"][1]["Value"] = "999999.00"
+        return body
+    client, _ = report_client(tmp_path, mixed)
+    with client:
+        response = client.get("/reports/balance-sheet/comparison?as_of=2026-02-28&comparison_as_of=2026-01-31&preset=custom")
+    assert response.status_code == 422, response.text
+    assert "999999.00" not in response.text

@@ -189,3 +189,21 @@ def test_invalid_comparison_dates_do_not_request_reports(tmp_path, dates):
         response = client.get("/reports/profit-and-loss/comparison?" + dates)
     assert response.status_code == 422
     assert all(request.url.path.endswith("/Organisation") for request in calls)
+
+
+@pytest.mark.parametrize("empty_current", [True, False])
+def test_empty_period_cannot_hide_invalid_populated_source(tmp_path, empty_current):
+    """An unavailable comparison still validates every source disclosed to the user."""
+    def mixed(request):
+        """Pair one genuinely empty period with an unreconciled populated period."""
+        current = request.url.params["fromDate"] == "2026-02-01"
+        if current == empty_current:
+            return {"Reports": []}
+        body = comparison_body(request)
+        body["Reports"][0]["Rows"][-1]["Rows"][0]["Cells"][1]["Value"] = "999999.00"
+        return body
+    client, _ = report_client(tmp_path, mixed)
+    with client:
+        response = client.get("/reports/profit-and-loss/comparison?date_from=2026-02-01&date_to=2026-02-28")
+    assert response.status_code == 422, response.text
+    assert "999999.00" not in response.text
