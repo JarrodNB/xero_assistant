@@ -7,3 +7,5 @@ Read-only accounting reports through the shared API helper. Native disclosures e
 `BalanceSheetExplorer.tsx` uses distinct as-of dates and position changes, not period ranges or profit contributions. The page's native tab buttons implement roving focus and arrow/Home/End keys. Unmounting an explorer cancels/ignores its late responses; switching reports cannot mix their results. Source disclosures accept either typed report and label positions with “As at”.
 
 `ExplanationSource.tsx` handles signed evidence navigation: refetch the same account identity before showing fresh rows, metadata and source links. Ignore/abort late responses. Expired/changed/deleted selection requires reopening Performance. ExplainReportChange links on overview/top movements prepare an editable session-storage draft without submitting it. Account selectors are opaque server-signed contexts, never the request-local movement key or any browser amount.
+
+Resolve the initial signed-source query before mounting a default explorer. Source navigation makes only the context-bound refetch, preserving the shared report allowance and report-type isolation.

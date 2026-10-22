@@ -298,3 +298,21 @@ test("chat report links accept only the exact internal evidence destination", ()
   render(React.createElement(ReportHandoff, { output: { action: "open_performance", href: "/performance" } }));
   assert.equal(screen.getByRole("link", { name: "Open Performance" }).getAttribute("href"), "/performance");
 });
+
+/** Opening a signed source must not consume a second unrelated report operation first. */
+test("full Performance source navigation fetches only the signed evidence", async () => {
+  window.history.replaceState({}, "", "/performance?context=signed-account");
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(String(url).includes("explanation-source") ? { report: fixture(), selected_key: "movement-1" } : fixture()), { status: 200 });
+  };
+  try {
+    render(React.createElement(Page));
+    await screen.findByRole("heading", { name: "Refreshed explanation evidence" });
+    assert.equal(calls.length, 1, JSON.stringify(calls));
+    assert.match(calls[0], /explanation-source\?context=signed-account/);
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
+});

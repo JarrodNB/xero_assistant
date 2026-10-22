@@ -147,7 +147,7 @@ function ProfitAndLossExplorer() {
 
 /** Switch between activity over ranges and positions at dates without mixing their state. */
 export default function PerformancePage() {
-  const [sourceToken, setSourceToken] = useState<string | null>(null);
+  const [sourceToken, setSourceToken] = useState<string | null | undefined>(undefined);
   useEffect(() => { setSourceToken(new URLSearchParams(window.location.search).get("context")); }, []);
   const [tab, setTab] = useState<"profit_and_loss" | "balance_sheet">("profit_and_loss");
   /** Apply roving focus and standard arrow/Home/End navigation to the native tab buttons. */
@@ -158,6 +158,7 @@ export default function PerformancePage() {
     setTab(next);
     document.getElementById(next === "profit_and_loss" ? "profit-loss-tab" : "balance-sheet-tab")?.focus();
   }
+  if (sourceToken === undefined) return <section className="performance-page"><h1>Performance</h1><p role="status">Loading report selection…</p></section>;
   if (sourceToken) return <section className="performance-page"><h1>Performance</h1><ExplanationSource token={sourceToken} /></section>;
   return <section className="performance-page"><h1>Performance</h1>
     <div className="report-tabs" role="tablist" aria-label="Financial reports" onKeyDown={navigateTabs}>
