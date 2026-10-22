@@ -8,6 +8,8 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../../../lib/api";
 import { AmountComparison, ReportComparison } from "../../../lib/reports";
+import { ExplainReportChange } from "../../../components/ReportChat";
+import { ExplanationSource } from "./ExplanationSource";
 import { EvidenceLink, ReportSources } from "./ReportSources";
 import { BalanceSheetExplorer } from "./BalanceSheetExplorer";
 
@@ -119,10 +121,11 @@ function ProfitAndLossExplorer() {
             <td className="money">{amount.current} {currency}</td><td className="money">{amount.comparison} {currency}</td><td className="money"><Change amount={amount} currency={currency} /></td>
           </tr>)}</tbody>
         </table></div>
+        <p><ExplainReportChange token={report.explanation_context} /></p>
         <h2>Largest profit contributors</h2>
         <p>Account movements contributing most to the profit change. Increased expenses reduce profit; expense credits can increase it.</p>
         <ol className="report-contributors">{report.top_movements.map((movement) => <li key={movement.key}>
-          <EvidenceLink source={movement.current_source || movement.comparison_source}>{movement.label}</EvidenceLink>: <strong>{movement.contribution} {currency}</strong>
+          <EvidenceLink source={movement.current_source || movement.comparison_source}>{movement.label}</EvidenceLink>: <strong>{movement.contribution} {currency}</strong> <ExplainReportChange token={movement.explanation_context} />
         </li>)}</ol>
         {report.top_movements.length === 0 ? <p>No changing accounts in these reports.</p> : null}
         <p>Other movements and rounding remainder: {report.other_movements} {currency}</p>
@@ -130,7 +133,7 @@ function ProfitAndLossExplorer() {
         <div className="report-table-scroll"><table className="report-comparison-table" aria-label="Account movements">
           <thead><tr><th scope="col">Account</th><th scope="col">Current</th><th scope="col">Comparison</th><th scope="col">Amount change</th><th scope="col">Profit contribution</th></tr></thead>
           <tbody>{report.movements.map((movement) => <tr key={movement.key}>
-            <th scope="row">{movement.label}{movement.previous_label ? <span className="report-percentage">Previously: {movement.previous_label}</span> : null}</th>
+            <th scope="row">{movement.label} <ExplainReportChange token={movement.explanation_context} />{movement.previous_label ? <span className="report-percentage">Previously: {movement.previous_label}</span> : null}</th>
             <td className="money"><EvidenceLink source={movement.current_source}>{movement.current} {currency}</EvidenceLink></td>
             <td className="money"><EvidenceLink source={movement.comparison_source}>{movement.comparison} {currency}</EvidenceLink></td>
             <td className="money"><Change amount={movement} currency={currency} /></td><td className="money">{movement.contribution} {currency}</td>
@@ -144,6 +147,8 @@ function ProfitAndLossExplorer() {
 
 /** Switch between activity over ranges and positions at dates without mixing their state. */
 export default function PerformancePage() {
+  const [sourceToken, setSourceToken] = useState<string | null>(null);
+  useEffect(() => { setSourceToken(new URLSearchParams(window.location.search).get("context")); }, []);
   const [tab, setTab] = useState<"profit_and_loss" | "balance_sheet">("profit_and_loss");
   /** Apply roving focus and standard arrow/Home/End navigation to the native tab buttons. */
   function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
@@ -153,6 +158,7 @@ export default function PerformancePage() {
     setTab(next);
     document.getElementById(next === "profit_and_loss" ? "profit-loss-tab" : "balance-sheet-tab")?.focus();
   }
+  if (sourceToken) return <section className="performance-page"><h1>Performance</h1><ExplanationSource token={sourceToken} /></section>;
   return <section className="performance-page"><h1>Performance</h1>
     <div className="report-tabs" role="tablist" aria-label="Financial reports" onKeyDown={navigateTabs}>
       <button type="button" id="profit-loss-tab" role="tab" tabIndex={tab === "profit_and_loss" ? 0 : -1} aria-selected={tab === "profit_and_loss"} aria-controls="report-panel" className={tab === "profit_and_loss" ? "primary" : "secondary"} onClick={() => setTab("profit_and_loss")}>Profit and loss</button>

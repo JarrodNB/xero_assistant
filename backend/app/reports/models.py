@@ -80,6 +80,7 @@ class AccountMovement(AmountComparison):
     """An aligned account change with request-local source references."""
 
     key: str
+    explanation_context: str | None = None
     label: str
     previous_label: str | None = None
     category: Literal["income", "expenses"]
@@ -93,6 +94,7 @@ class ReportComparison(BaseModel):
     """A complete pair of reports and reconciled deterministic movements."""
 
     schema_version: Literal["1"] = "1"
+    explanation_context: str | None = None
     report_type: Literal["profit_and_loss"] = "profit_and_loss"
     status: Literal["ready", "empty"]
     complete: Literal[True] = True
@@ -135,6 +137,7 @@ class PositionMovement(AmountComparison):
     """An account position change within assets, liabilities or equity."""
 
     key: str
+    explanation_context: str | None = None
     label: str
     previous_label: str | None = None
     category: Literal["assets", "liabilities", "equity"]
@@ -148,6 +151,7 @@ class BalanceSheetComparison(BaseModel):
     """Two validated positions with category-preserving account deltas."""
 
     schema_version: Literal["1"] = "1"
+    explanation_context: str | None = None
     report_type: Literal["balance_sheet"] = "balance_sheet"
     status: Literal["ready", "empty"]
     complete: Literal[True] = True

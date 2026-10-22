@@ -6,6 +6,9 @@ Public API:
 
 import asyncio
 import re
+import time
+from collections import deque
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Literal
@@ -16,7 +19,7 @@ from app.reports.balance_sheet import compare_balance_sheets, resolve_position_d
 from app.reports.comparison import compare_profit_and_loss
 from app.reports.normalization import normalize_balance_sheet, normalize_profit_and_loss, unsupported_report
 from app.reports.periods import resolve_profit_periods
-from app.xero.client import XeroApiError, XeroClient
+from app.xero.client import XeroApiError, XeroClient, current_read_tenant
 
 # Xero returns Windows timezone names, not necessarily IANA identifiers.
 ORGANISATION_ZONES = {
@@ -40,15 +43,36 @@ CURRENCY_DECIMAL_PLACES = {
 class ReportService:
     """Own report retrieval, validation and time/currency context behind one interface."""
 
-    def __init__(self, client: XeroClient, timeout_seconds: float = 30) -> None:
+    def __init__(self, client: XeroClient, timeout_seconds: float = 30, rate_limit: int = 12) -> None:
         """Keep the existing client and the whole-operation cancellation budget."""
         self._client = client
         self._timeout_seconds = timeout_seconds
+        self._rate_limit = rate_limit
+        self._requests = deque()
+
+    @asynccontextmanager
+    async def _operation(self):
+        """Rate-limit all callers and bind every GET to one unchanged connected tenant."""
+        now = time.monotonic()
+        while self._requests and self._requests[0] <= now - 60:
+            self._requests.popleft()
+        if len(self._requests) >= self._rate_limit:
+            raise ApiError(429, "Report request limit reached", "Too many report reads in one minute.", True, "Wait a minute before refreshing the report.")
+        self._requests.append(now)
+        tenant = self._client.connected_tenant()
+        marker = current_read_tenant.set(tenant)
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                yield
+                if self._client.connected_tenant() != tenant:
+                    raise XeroApiError(409, "Xero connection changed during the report read.")
+        finally:
+            current_read_tenant.reset(marker)
 
     async def profit_and_loss(self, date_from: date | None = None, date_to: date | None = None) -> FinancialReport:
         """Return one explicitly dated accrual P&L, defaulting in organisation time."""
         try:
-            async with asyncio.timeout(self._timeout_seconds):
+            async with self._operation():
                 currency, zone = await self._organisation()
                 today = datetime.now(ZoneInfo(zone)).date()
                 if date_from is None and date_to is None:
@@ -107,7 +131,7 @@ class ReportService:
                                      preset: Literal["previous_period", "previous_year", "custom"] = "previous_period") -> ReportComparison:
         """Read two P&Ls and reconcile their movements under one operation deadline."""
         try:
-            async with asyncio.timeout(self._timeout_seconds):
+            async with self._operation():
                 currency, zone = await self._organisation()
                 dates = resolve_profit_periods(datetime.now(ZoneInfo(zone)).date(), date_from, date_to,
                                                comparison_from, comparison_to, preset)
@@ -140,7 +164,7 @@ class ReportService:
                                      preset: Literal["previous_month", "previous_year", "custom"] = "previous_month") -> BalanceSheetComparison:
         """Read two explicitly dated positions under the existing bounded operation budget."""
         try:
-            async with asyncio.timeout(self._timeout_seconds):
+            async with self._operation():
                 currency, zone = await self._organisation()
                 dates = resolve_position_dates(datetime.now(ZoneInfo(zone)).date(), as_of, comparison_as_of, preset)
                 current = await self._position_report(dates[0], currency, zone)

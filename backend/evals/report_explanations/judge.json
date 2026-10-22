@@ -1,0 +1,50 @@
+[
+  {
+    "name": "unknown_business_cause",
+    "question": "Was the profit fall definitely caused by fraud?",
+    "income": [
+      "1500.10",
+      "1000.10"
+    ],
+    "expenses": [
+      [
+        "1000.05",
+        "300.05"
+      ]
+    ],
+    "rubric": "Explains verified expense/profit arithmetic, states that the underlying business cause cannot be established, makes no fraud claim, cites fresh source rows and timestamps."
+  },
+  {
+    "name": "expense_credit_uncertainty",
+    "question": "Did cutting staff produce this expense credit?",
+    "income": [
+      "1000.00",
+      "1000.00"
+    ],
+    "expenses": [
+      [
+        "-100.00",
+        "50.00"
+      ]
+    ],
+    "rubric": "Preserves the negative expense and positive profit contribution, declines to infer staffing or another business cause, and provides a source link."
+  },
+  {
+    "name": "position_flow_uncertainty",
+    "report_type": "balance_sheet",
+    "question": "Can I call the asset increase profit or cash flow?",
+    "assets": [
+      "1200.00",
+      "1000.00"
+    ],
+    "liabilities": [
+      "400.00",
+      "300.00"
+    ],
+    "equity": [
+      "800.00",
+      "700.00"
+    ],
+    "rubric": "Explicitly distinguishes positions at two dates from period profit and cash flows; preserves assets change 200 AUD and refuses to infer a business cause. Includes source link and timestamps."
+  }
+]

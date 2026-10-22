@@ -20,6 +20,7 @@ TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 API_ROOT = "https://api.xero.com/api.xro/2.0"
 current_write_key: ContextVar[str | None] = ContextVar("current_write_key", default=None)
+current_read_tenant: ContextVar[str | None] = ContextVar("current_read_tenant", default=None)
 MAX_ATTEMPTS = 3
 MAX_RETRY_DELAY = 2.0
 
@@ -55,6 +56,13 @@ class XeroClient:
         self._tenant_id = ""
         self._token_expiry = 0.0
         self._refresh_lock = asyncio.Lock()
+
+    def connected_tenant(self) -> str:
+        """Read the current trusted connection identity for bounded report operations."""
+        connection = self._store.load()
+        if connection is None:
+            raise XeroApiError(409, "Xero connection is unavailable.")
+        return connection.tenant_id
 
     async def aclose(self) -> None:
         """Close the HTTP client when this object created it."""
@@ -116,6 +124,9 @@ class XeroClient:
     ) -> dict[str, Any]:
         """Send one accounting request with a fresh or cached access token."""
         token, tenant_id = await self._access()
+        expected = current_read_tenant.get()
+        if expected is not None and (tenant_id != expected or self.connected_tenant() != expected):
+            raise XeroApiError(409, "Xero connection changed during the report read.")
         is_write = method != "GET"
         headers = {
             "Authorization": f"Bearer {token}",

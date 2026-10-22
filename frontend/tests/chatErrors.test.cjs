@@ -140,3 +140,20 @@ test("confirmation sends bounded narration through the chat transport", async ()
   assert.match(text, /INV-42/);
   assert.doesNotMatch(text, /receipt-id|private/);
 });
+
+/** Context handoff stays an editable draft until the person intentionally sends it. */
+test("report handoff prepares an editable context-bound draft without submitting", async () => {
+  window.sessionStorage.setItem("ledger-report-draft", JSON.stringify({ token: "signed-context", draft: "Explain this report change." }));
+  let body = null;
+  globalThis.fetch = async (_url, init) => {
+    body = JSON.parse(init.body);
+    return new Response('data: {"type":"start","messageId":"report"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1" } });
+  };
+  render(React.createElement(ChatPanel, { conversation: "report-draft", transcript: [], historyActions: [], onActivity() {} }));
+  const input = screen.getByPlaceholderText("Ask Ledger about the connected Xero company");
+  assert.equal(input.value, "Explain this report change.");
+  assert.equal(body, null);
+  fireEvent.change(input, { target: { value: "Which expense changed most?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => assert.equal(body.report_context, "signed-context"));
+});

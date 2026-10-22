@@ -46,3 +46,6 @@ Artifacts under `evals/artifacts/` are local and git-ignored. Retain only allowl
 - `test_observability.py` also verifies actual SDK finished-span sanitization. Tests clear tracing credentials to prevent remote exports.
 
 - test_financial_completeness.py covers currency grouping, period alignment, empty/missing currency, reversed dates, cap/lookahead boundaries, upstream filtering, malformed pages, contact truncation, typed HTTP/MCP schemas, and deterministic answer checks. No providers or live Xero are used.
+
+- `test_report_chat.py` — signed identity/refetch/source evidence, tenant reconnect, report-only FunctionModel/MCP output, PII/injection/provider/guard fallback, request/tool/token/character/deadline/rate/result limits and ordinary-history isolation. No live providers/Xero.
+- `test_report_evals.py` — report golden CI and separate opt-in judge guards, including exact seven-account displayed-contributor reconciliation.

@@ -17,3 +17,5 @@ Provider-history copies remove action_id, line_item_id, and removed_line_item_id
 - `phrase_screen.py` — known jailbreak, harm, dosage, and self-harm phrases
 - `policy_screen.py` — strict input policy, refusal routes, and the user-message screen
 Configured Jev screening is bounded by `JEV_TIMEOUT_SECONDS` (five by default) and the overall chat deadline. Failure remains fail-closed; cancellation must propagate and request context must reset. Do not send failed-screen diagnostics or raw content to traces. Guardrail tracing is metadata only.
+
+`redact_text` first removes the known application-rendered report envelope via report_history; ordinary model inputs, summaries and Jev history must not ingest report figures. The isolated report workflow screens protected labels separately with the pinned report Jev setting and metadata-only guard tracing. Failed configured screening selects deterministic rendering, and narration disabled performs no report provider/screener work.

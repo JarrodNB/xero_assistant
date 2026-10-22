@@ -43,6 +43,7 @@ export type AmountComparison = {
 };
 
 export type AccountMovement = AmountComparison & {
+  explanation_context?: string | null;
   key: string;
   label: string;
   previous_label: string | null;
@@ -53,6 +54,7 @@ export type AccountMovement = AmountComparison & {
 };
 
 export type ReportComparison = {
+  explanation_context?: string | null;
   schema_version: "1";
   report_type: "profit_and_loss";
   status: "ready" | "empty";

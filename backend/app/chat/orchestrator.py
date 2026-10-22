@@ -23,7 +23,7 @@ from app.config import Settings
 def build_chat_agent(model: str | Model, server: FastMCP, settings: Settings | None = None) -> Agent:
     """Create the orchestrator. It delegates reads and calls propose_action itself."""
     invoices = build_invoices_agent(model, server, settings)
-    propose = MCPToolset(server).filtered(lambda _ctx, tool: tool.name == "propose_action")
+    propose = MCPToolset(server).filtered(lambda _ctx, tool: tool.name in {"propose_action", "compare_profit_and_loss", "compare_balance_sheets"})
     return Agent(
         model,
         name="orchestrator",

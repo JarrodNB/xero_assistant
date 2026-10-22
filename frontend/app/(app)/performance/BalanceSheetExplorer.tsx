@@ -8,6 +8,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../../../lib/api";
 import { BalanceSheetComparison } from "../../../lib/reports";
+import { ExplainReportChange } from "../../../components/ReportChat";
 import { EvidenceLink, ReportSources } from "./ReportSources";
 
 /** Inspect position changes without suggesting they are profit or cash-flow movements. */
@@ -95,12 +96,13 @@ export function BalanceSheetExplorer() {
           </tr>)}</tbody>
         </table></div>
         <h2>Largest position changes</h2>
-        <ol className="report-contributors">{report.top_movements.map((row) => <li key={row.key}><EvidenceLink source={row.current_source || row.comparison_source}>{row.label}</EvidenceLink>: <strong>{row.change} {currency}</strong> ({row.category})</li>)}</ol>
+        <p><ExplainReportChange token={report.explanation_context} /></p>
+        <ol className="report-contributors">{report.top_movements.map((row) => <li key={row.key}><EvidenceLink source={row.current_source || row.comparison_source}>{row.label}</EvidenceLink>: <strong>{row.change} {currency}</strong> ({row.category}) <ExplainReportChange token={row.explanation_context} /></li>)}</ol>
         {report.top_movements.length === 0 ? <p>No changing account positions in these reports.</p> : null}
         <h2>Account positions</h2>
         <div className="report-table-scroll"><table className="report-comparison-table" aria-label="Account positions">
           <thead><tr><th scope="col">Account and section</th><th scope="col">Current</th><th scope="col">Comparison</th><th scope="col">Position change</th></tr></thead>
-          <tbody>{report.movements.map((row) => <tr key={row.key}><th scope="row">{row.label}<span className="report-percentage">{row.section} · {row.category}</span>{row.previous_label ? <span className="report-percentage">Previously: {row.previous_label}</span> : null}</th>
+          <tbody>{report.movements.map((row) => <tr key={row.key}><th scope="row">{row.label} <ExplainReportChange token={row.explanation_context} /><span className="report-percentage">{row.section} · {row.category}</span>{row.previous_label ? <span className="report-percentage">Previously: {row.previous_label}</span> : null}</th>
             <td className="money"><EvidenceLink source={row.current_source}>{row.current} {currency}</EvidenceLink></td><td className="money"><EvidenceLink source={row.comparison_source}>{row.comparison} {currency}</EvidenceLink></td>
             <td className="money">{row.change} {currency}<span className="report-percentage">{row.percentage_change === null ? row.percentage_note : row.percentage_change + "%"}</span></td>
           </tr>)}</tbody>

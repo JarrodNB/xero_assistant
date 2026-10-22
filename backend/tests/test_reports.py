@@ -252,7 +252,7 @@ def test_operation_deadline_cancels_report_read(tmp_path) -> None:
             cancelled.append(True)
             raise
     client.app.state.xero.get_bounded = slow_read
-    client.app.state.settings = client.app.state.settings.model_copy(update={"report_timeout_seconds": 0.01})
+    client.app.state.services.reports._timeout_seconds = 0.01
     with client:
         result = client.get("/reports/profit-and-loss")
     assert result.status_code == 504

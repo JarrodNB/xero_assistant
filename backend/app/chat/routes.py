@@ -149,6 +149,10 @@ async def chat(request: Request) -> Response:
     try:
         async with asyncio.timeout_at(deadline):
             body = await request.body()
+            payload = json.loads(body)
+            if isinstance(payload, dict) and "report_context" in payload:
+                from app.chat.report_routes import report_chat_response
+                return await report_chat_response(request, payload["report_context"], latest_user_text(body), deadline)
             run_input = VercelAIAdapter.build_run_input(body)
     except (ValidationError, ValueError):
         return Response(content='{"what":"Invalid chat request"}', media_type="application/json", status_code=422)

@@ -23,7 +23,7 @@ async def profit_and_loss(request: Request, query: Annotated[ProfitAndLossQuery,
     settings = request.app.state.settings
     if not settings.performance_reports_enabled:
         raise ApiError(503, "Performance reports are disabled", "Reporting is not enabled for this installation.", False, "Enable reporting after the demo access check.")
-    service = ReportService(request.app.state.xero, settings.report_timeout_seconds)
+    service = request.app.state.services.reports
     return await service.profit_and_loss(query.date_from, query.date_to)
 
 
@@ -35,8 +35,9 @@ async def profit_and_loss_comparison(request: Request, query: Annotated[ProfitCo
     if not settings.performance_reports_enabled:
         raise ApiError(503, "Performance reports are disabled", "Reporting is not enabled for this installation.", False,
                        "Enable reporting after the demo access check.")
-    return await ReportService(request.app.state.xero, settings.report_timeout_seconds).compare_profit_and_loss(
+    report = await request.app.state.services.reports.compare_profit_and_loss(
         query.date_from, query.date_to, query.comparison_from, query.comparison_to, query.preset)
+    return request.app.state.report_contexts.decorate(report)
 
 
 @router.get("/balance-sheet/comparison")
@@ -47,4 +48,15 @@ async def balance_sheet_comparison(request: Request, query: Annotated[BalanceShe
     if not settings.performance_reports_enabled:
         raise ApiError(503, "Performance reports are disabled", "Reporting is not enabled for this installation.", False,
                        "Enable reporting after the demo access check.")
-    return await ReportService(request.app.state.xero, settings.report_timeout_seconds).compare_balance_sheets(query.as_of, query.comparison_as_of, query.preset)
+    report = await request.app.state.services.reports.compare_balance_sheets(query.as_of, query.comparison_as_of, query.preset)
+    return request.app.state.report_contexts.decorate(report)
+
+
+@router.get("/explanation-source")
+async def explanation_source(request: Request, context: Annotated[str, Query(min_length=1, max_length=2048)]) -> dict:
+    """Refresh evidence navigation by stable signed identity rather than stale row position."""
+    require_user(request)
+    if not request.app.state.settings.performance_reports_enabled:
+        raise ApiError(503, "Performance reports are disabled", "Reporting is not enabled.", False, "Open Performance after reporting is enabled.")
+    report, selected = await request.app.state.report_contexts.resolve(context, request.app.state.services.reports)
+    return {"report": request.app.state.report_contexts.decorate(report).model_dump(mode="json"), "selected_key": selected}

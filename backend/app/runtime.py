@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from app.db.repository import ActionRepository
 from app.invoices.gateway import InvoiceGateway
+from app.reports.service import ReportService
 
 
 @dataclass
@@ -19,6 +20,7 @@ class AppServices:
 
     invoices: InvoiceGateway
     actions: ActionRepository
+    reports: ReportService | None = None
 
 
 current_services: ContextVar[AppServices | None] = ContextVar("current_services", default=None)

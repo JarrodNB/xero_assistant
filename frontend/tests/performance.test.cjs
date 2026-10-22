@@ -255,3 +255,46 @@ test("new accounts show zero baseline and a visible percentage explanation", asy
   assert.ok(within(table).queryByText("0.00 AUD"), "The validated zero baseline should remain visible.");
   assert.ok(within(table).queryByText(/comparison amount is zero or negative/), "The percentage limitation should be readable without hovering.");
 });
+
+/** Prepare a signed context only; clicking the handoff cannot send a chat request. */
+test("Explain this change stores an editable report draft", async () => {
+  const data = fixture();
+  data.explanation_context = "overview-token";
+  data.top_movements[0].explanation_context = "account-token";
+  globalThis.fetch = async () => new Response(JSON.stringify(data), { status: 200 });
+  render(React.createElement(Page));
+  const links = await screen.findAllByRole("link", { name: "Explain this change" });
+  assert.equal(links[1].getAttribute("href"), "/chat");
+  links[1].addEventListener("click", (event) => event.preventDefault());
+  fireEvent.click(links[1]);
+  const draft = JSON.parse(window.sessionStorage.getItem("ledger-report-draft"));
+  assert.equal(draft.token, "account-token");
+  assert.match(draft.draft, /Explain this report change/);
+  window.sessionStorage.clear();
+});
+
+/** Source navigation refetches signed identity, then opens the exact returned source row. */
+test("signed evidence navigation refetches and focuses the correct source row", async () => {
+  const { ExplanationSource } = require("/tmp/ledger-frontend-tests/app/(app)/performance/ExplanationSource.js");
+  let request;
+  globalThis.fetch = async (url) => {
+    request = String(url);
+    return new Response(JSON.stringify({ report: fixture(), selected_key: "movement-1" }), { status: 200 });
+  };
+  render(React.createElement(ExplanationSource, { token: "signed-account" }));
+  const link = await screen.findByRole("link", { name: "1000.10 AUD" });
+  assert.match(request, /explanation-source\?context=signed-account/);
+  fireEvent.click(link);
+  assert.equal(document.activeElement.id, "current-source-1-1");
+  assert.ok(document.querySelector("details").open);
+});
+
+/** Financial source links become links, while arbitrary model URLs remain inert text. */
+test("chat report links accept only the exact internal evidence destination", () => {
+  const { ReportText, ReportHandoff } = require("/tmp/ledger-frontend-tests/components/ReportChat.js");
+  render(React.createElement(ReportText, { text: "[View source rows (refreshes report)](/performance?context=signed.token) [bad](https://attacker.example)" }));
+  assert.equal(screen.getAllByRole("link").length, 1);
+  assert.equal(screen.getByRole("link").getAttribute("href"), "/performance?context=signed.token");
+  render(React.createElement(ReportHandoff, { output: { action: "open_performance", href: "/performance" } }));
+  assert.equal(screen.getByRole("link", { name: "Open Performance" }).getAttribute("href"), "/performance");
+});
