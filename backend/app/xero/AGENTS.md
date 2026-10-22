@@ -15,5 +15,6 @@ Mapping retains line identities and edit capability flags for the HTTP editor. R
 - `oauth.py` — authorisation URL, scopes, and tenant choice
 - `routes.py` — start and finish the authorisation-code flow
 - `client.py` — token refresh and Accounting API calls
+- `client.py` also exposes `get_bounded` for reporting: decoded response bytes are capped before JSON parsing and streams close on rejection. Existing invoice/contact reads keep their current interface.
 - `connection_store.py` — the one refresh token and tenant id
 - `mapping.py` — Xero payloads to local contact and invoice records

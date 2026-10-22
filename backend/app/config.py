@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     session_https_only: bool = False
     action_execution_timeout_seconds: float = Field(default=120, gt=0, le=240)
+    performance_reports_enabled: bool = False
+    report_timeout_seconds: float = Field(default=30, gt=0, le=60)
 
 
 @lru_cache

@@ -6,6 +6,8 @@ JavaScript test files use the purpose/public API header from `frontend/AGENTS.md
 
 ## Files
 
+- `performance.test.cjs` — report source/metadata rendering, native disclosures, empty/disabled/reconnect recovery and late-response isolation without browser automation
+
 - `chatErrors.test.cjs` also verifies bounded narration for large results and the actual confirmation-to-chat transport path without private ids or diagnostics.
 
 - `api.test.cjs` — write receipt persistence, concurrent submissions, sanitized errors, and retry identifiers

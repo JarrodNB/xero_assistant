@@ -19,6 +19,7 @@ Python files in this folder use the module docstring in `backend/AGENTS.md`. Eve
 - `chat/` — orchestrator, invoices subagent, prompt, guardrails, summary, and chat routes
 - `db/` — SQLite schema and repository
 - `invoices/` — invoice records, the shared gateway, and invoice HTTP routes
+- `reports/` — bounded read-only accounting reports, metadata validation and source evidence
 - `mcp_server/` — in-process MCP tools the model may call
 - `xero/` — OAuth and the Accounting API client
 Phase 4 configuration validates AI deadlines, usage/output budgets, optional temperature, summary/history limits, fail-fast provider policy, and trace sampling at startup. Production supports `openai:` with SDK retries disabled. Application lifespan closes the owned OpenAI client and tracing provider alongside Xero/SQLite even if another cleanup fails.

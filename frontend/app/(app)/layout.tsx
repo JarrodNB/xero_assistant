@@ -68,6 +68,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {xeroConnected && xeroTenantName ? <p className="tenant-label">{xeroTenantName}</p> : null}
         </div>
         <nav>
+          <Link className={pathname.startsWith("/performance") ? "active" : ""} aria-current={pathname.startsWith("/performance") ? "page" : undefined} href="/performance">
+            Performance
+          </Link>
           <Link className={pathname.startsWith("/invoices") ? "active" : ""} href="/invoices">
             Invoices
           </Link>

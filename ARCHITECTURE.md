@@ -1,5 +1,13 @@
 # Architecture
 
+## Read-only performance reports
+
+The Performance route follows browser → Next.js `/api/backend` proxy → authenticated FastAPI `/reports/profit-and-loss` → report module → Xero. It does not use the invoice-total calculator or the write/proposal path. The reports module owns organisation currency/timezone metadata, explicit date resolution, normalization and source-row keys. Account identities remain private inside typed results and are excluded from HTTP serialization.
+
+`PERFORMANCE_REPORTS_ENABLED` gates reads and defaults off. Report scopes require renewed OAuth consent and user permission; connection status is insufficient. One operation encloses organisation and report reads in `REPORT_TIMEOUT_SECONDS` (default 30). The Xero client's separate `get_bounded` path streams and caps decoded bytes before JSON parsing, including compressed responses, while existing invoice/contact reads retain their behavior. Reports are limited to 1 MiB decoded content and 500 account rows. Malformed or unsupported data fails closed; explicitly empty data is distinct from zero profit. No report bodies are stored, logged, traced or sent to model providers by this page. No report path mutates accounting records.
+
+The P&L view preserves source hierarchy and decimal strings with metadata, native section disclosure, explicit refresh and stale-response protection. Supported English standard report headings are verified against request dates. Base-currency precision and Windows-to-IANA timezone mappings are explicit policies; unsupported values do not silently inherit defaults. Comparisons, balance-sheet display and AI explanation are subsequent slices, not implemented by this initial report view. Human QA verifies live permission, dates/basis and source values against Xero before enabling the flag.
+
 Ledger is two containers plus a SQLite file. Local development runs through Docker Compose directly on Ubuntu. Source directories are bind-mounted, and SQLite persists in the local `assistant-data` named volume. Rebuilding images preserves volumes; transferring the repository to a new computer requires a separate database backup/restore to retain saved conversations and the Xero connection.
 
 - `frontend` is a Next.js app. The browser talks only to it. `/api/backend/*` is rewritten to the API.

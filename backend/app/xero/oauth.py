@@ -12,7 +12,7 @@ from urllib.parse import quote, urlencode
 from app.xero.client import XeroApiError
 
 AUTHORIZE_URL = "https://login.xero.com/identity/connect/authorize"
-SCOPES = "openid profile email offline_access accounting.invoices accounting.contacts accounting.settings"
+SCOPES = "openid profile email offline_access accounting.invoices accounting.contacts accounting.settings accounting.reports.profitandloss.read accounting.reports.balancesheet.read"
 
 
 def authorize_url(client_id: str, redirect_uri: str, state: str) -> str:

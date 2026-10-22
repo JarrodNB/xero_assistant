@@ -23,6 +23,7 @@ from app.db.schema import create_engine_for
 from app.errors import ApiError
 from app.invoices.routes import router as invoices_router
 from app.invoices.xero_service import XeroInvoiceService
+from app.reports.routes import router as reports_router
 from app.mcp_server.server import build_mcp_server
 from app.observability import configure_observability
 from app.runtime import AppServices
@@ -93,6 +94,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(xero_router)
     app.include_router(invoices_router)
+    app.include_router(reports_router)
     app.include_router(actions_router)
     app.include_router(chat_router)
     return app

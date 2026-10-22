@@ -22,6 +22,74 @@
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 
+.performance-page {
+  max-width: 1100px;
+}
+
+.report-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  margin: 24px 0;
+}
+
+.report-metadata dt {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.report-metadata dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-source {
+  overflow-x: auto;
+}
+
+.report-section {
+  margin: 0 0 16px;
+}
+
+.report-section summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-source-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.report-source-table th {
+  width: 64%;
+  font-weight: 400;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.report-source-table td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.report-source-table .report-total th,
+.report-source-table .report-total td {
+  font-weight: 600;
+}
+
+.report-source-table tr:target {
+  background: var(--green-soft);
+}
+
+.report-error {
+  padding: 20px 0;
+  max-width: 70ch;
+}
+
 * {
   box-sizing: border-box;
 }

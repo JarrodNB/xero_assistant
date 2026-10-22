@@ -18,6 +18,18 @@ For example, **“Create an invoice for Bob's Construction for $200 of consultin
 
 Invoice edits send only changed fields. Clearing the reference is supported; clearing a due date requires Xero. Existing lines keep their identities, accounts, tax, tracking, and supported discount details. The editor explains unsupported line formats and keeps their metadata editable. Amounts on lines with explicit tax must be edited in Xero because Ledger cannot safely identify manual tax overrides. Chat line edits use exact original description, quantity, and price selectors. The server resolves unique matches to private Xero identities before proposal; ambiguous or changed lines require reloading or the invoice editor. Confirmation explanations use bounded narration.
 
+## Performance reports
+
+The Performance page can show a read-only, standard-layout accrual P&L for the last completed month, resolved using the connected organisation's timezone. Expand sections to inspect exact source-row amounts; dates, base currency, basis, timezone and retrieval time remain visible. This first reporting slice has no generated explanations or accounting writes.
+
+Reporting is disabled by default. Set `PERFORMANCE_REPORTS_ENABLED=true` only after verifying the connected Demo Company and matching the report against Xero. Restart the backend after changing environment settings. Reconnect Xero to grant `accounting.reports.profitandloss.read` and `accounting.reports.balancesheet.read`; an existing connection alone does not establish report consent. The connected user must also have report permissions. Balance-sheet UI and comparisons are follow-up work.
+
+Authenticated `GET /reports/profit-and-loss` accepts optional `date_from` and `date_to` together as YYYY-MM-DD. Missing both selects the last completed month. Future or reversed ranges fail. The browser uses the Next.js proxy. Responses use schema version `1`, decimal-string amounts, public source-row keys and currency precision metadata; private Xero account identities are excluded.
+
+Each report uses at most one organisation read and one report read, each with a 1 MiB decoded-byte cap before JSON parsing, at most 500 account rows and a whole-operation `REPORT_TIMEOUT_SECONDS` budget (default 30, maximum 60). Existing Xero read retries remain bounded to three attempts within that deadline. Missing access prompts reconnection; oversized, malformed, unsupported or unavailable reports never become inferred zero totals. An explicitly empty report has no profit amount. Streams close on rejection/cancellation; no raw report is persisted, logged, traced or sent to an AI provider by this page.
+
+The initial parser supports English standard report rows with trusted account identifiers and verified month/range headings (including Xero's documented end-date heading plus full-range title). Base currencies have an explicit supported precision policy; supported codes currently include AUD, NZD, USD, CAD, GBP, EUR, SGD, HKD, ZAR, INR, PHP, CNY, JPY, KRW, BHD, KWD and OMR. Windows-style organisation timezones are explicitly mapped for supported demo regions; unsupported currency/timezone/layout returns recovery guidance rather than a guess. Live Demo Company report access and visual/manual QA remain human-run release checks.
+
 ## Engineering decisions
 
 **Keep the write boundary in application code.** The model can look up records and propose an action, but it cannot execute a Xero write. FastAPI validates the proposal and handles execution after a person confirms it. The invoice editor uses the same service and validation rules.
