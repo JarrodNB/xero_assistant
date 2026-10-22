@@ -40,4 +40,3 @@ def report_evidence(report_type: Literal["profit_and_loss", "balance_sheet"]) ->
     if facts is None or facts.report.report_type != report_type:
         return ReportHandoff(report_type=report_type)
     return ProtectedReportEvidence.model_validate(facts.protected_input(redact_text))
-

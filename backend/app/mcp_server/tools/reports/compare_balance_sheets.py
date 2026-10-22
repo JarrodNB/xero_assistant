@@ -20,4 +20,3 @@ def register_compare_balance_sheets(server: FastMCP) -> None:
         Example: compare_balance_sheets(). Schema v1; bounded evidence, no amounts or raw report trees.
         """
         return report_evidence("balance_sheet")
-

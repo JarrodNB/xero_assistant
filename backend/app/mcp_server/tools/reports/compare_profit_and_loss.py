@@ -20,4 +20,3 @@ def register_compare_profit_and_loss(server: FastMCP) -> None:
         Example: compare_profit_and_loss(). Schema v1; bounded evidence, no amounts or raw report trees.
         """
         return report_evidence("profit_and_loss")
-
