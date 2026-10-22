@@ -140,5 +140,5 @@ def prompt_versions() -> dict[str, str]:
     """Hash prompt and screening source versions without exposing any injected values."""
     root = Path(__file__).parent
     return {name: hashlib.sha256((root / path).read_bytes()).hexdigest() for name, path in {
-        "chat": "prompt.py", "summary": "summary.py", "guardrail": "guardrails/policy_screen.py",
+        "report": "report_prompt.py", "chat": "prompt.py", "summary": "summary.py", "guardrail": "guardrails/policy_screen.py",
     }.items()}

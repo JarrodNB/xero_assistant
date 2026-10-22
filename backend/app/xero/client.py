@@ -20,6 +20,7 @@ TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 API_ROOT = "https://api.xero.com/api.xro/2.0"
 current_write_key: ContextVar[str | None] = ContextVar("current_write_key", default=None)
+current_read_tenant: ContextVar[str | None] = ContextVar("current_read_tenant", default=None)
 MAX_ATTEMPTS = 3
 MAX_RETRY_DELAY = 2.0
 
@@ -56,6 +57,13 @@ class XeroClient:
         self._token_expiry = 0.0
         self._refresh_lock = asyncio.Lock()
 
+    def connected_tenant(self) -> str:
+        """Read the current trusted connection identity for bounded report operations."""
+        connection = self._store.load()
+        if connection is None:
+            raise XeroApiError(409, "Xero connection is unavailable.")
+        return connection.tenant_id
+
     async def aclose(self) -> None:
         """Close the HTTP client when this object created it."""
         if self._owns_http:
@@ -64,6 +72,12 @@ class XeroClient:
     async def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Send an authorised GET request and return the JSON body."""
         return await self._request("GET", path, params=params)
+
+    async def get_bounded(self, path: str, params: dict[str, Any] | None = None, *, max_bytes: int = 1048576) -> dict[str, Any]:
+        """Read bounded decoded bytes before JSON parsing, with the usual read retries."""
+        if max_bytes < 1:
+            raise ValueError("Response byte limit must be positive.")
+        return await self._request("GET", path, params=params, max_response_bytes=max_bytes)
 
     async def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Send an authorised POST request and return the JSON body."""
@@ -106,9 +120,13 @@ class XeroClient:
         path: str,
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        max_response_bytes: int | None = None,
     ) -> dict[str, Any]:
         """Send one accounting request with a fresh or cached access token."""
         token, tenant_id = await self._access()
+        expected = current_read_tenant.get()
+        if expected is not None and (tenant_id != expected or self.connected_tenant() != expected):
+            raise XeroApiError(409, "Xero connection changed during the report read.")
         is_write = method != "GET"
         headers = {
             "Authorization": f"Bearer {token}",
@@ -125,6 +143,7 @@ class XeroClient:
             json=payload,
             headers=headers,
             outcome_unknown=is_write,
+            max_response_bytes=max_response_bytes,
         )
         if response.status_code >= 400:
             raise XeroApiError(response.status_code, "Xero rejected the accounting request.", outcome_unknown=is_write and response.status_code >= 500)
@@ -133,14 +152,15 @@ class XeroClient:
             raise XeroApiError(502, "Xero returned an invalid accounting response.", outcome_unknown=is_write)
         return body
 
-    async def _send(self, method: str, url: str, *, outcome_unknown: bool = False, retry: bool = True, **kwargs: Any) -> httpx.Response:
+    async def _send(self, method: str, url: str, *, outcome_unknown: bool = False, retry: bool = True, max_response_bytes: int | None = None, **kwargs: Any) -> httpx.Response:
         """Retry bounded reads or identical keyed writes without replaying OAuth grants."""
         attempts = MAX_ATTEMPTS if retry else 1
         started = time.monotonic()
         uncertain = False
         for attempt in range(attempts):
             try:
-                response = await self._http.request(method, url, **kwargs)
+                response = (await self._bounded_response(method, url, max_response_bytes, **kwargs)
+                            if max_response_bytes is not None else await self._http.request(method, url, **kwargs))
             except httpx.RequestError as error:
                 uncertain = outcome_unknown
                 if attempt + 1 == attempts or time.monotonic() - started > 120:
@@ -161,6 +181,18 @@ class XeroClient:
                 return response
             await asyncio.sleep(delay)
         raise AssertionError("Retry loop must return or raise.")
+
+    async def _bounded_response(self, method: str, url: str, max_bytes: int, **kwargs: Any) -> httpx.Response:
+        """Close the stream immediately when decoded content exceeds the read budget."""
+        async with self._http.stream(method, url, **kwargs) as response:
+            content = bytearray()
+            async for chunk in response.aiter_bytes(chunk_size=16384):
+                if len(content) + len(chunk) > max_bytes:
+                    raise XeroApiError(413, "Xero returned a response exceeding the report size limit.")
+                content.extend(chunk)
+            # aiter_bytes already decoded compression; do not apply that encoding again.
+            headers = {key: value for key, value in response.headers.items() if key.lower() not in {"content-encoding", "content-length"}}
+            return httpx.Response(response.status_code, headers=headers, content=bytes(content), request=response.request)
 
     async def _access(self) -> tuple[str, str]:
         """Return a cached access token, refreshing it with the stored refresh token."""

@@ -1,0 +1,164 @@
+[
+  {
+    "name": "revenue_up_profit_down",
+    "question": "Revenue grew; why did profit fall?",
+    "income": [
+      "1500.10",
+      "1000.10"
+    ],
+    "expenses": [
+      [
+        "1000.05",
+        "300.05"
+      ]
+    ],
+    "contains": [
+      "500.05 AUD",
+      "-200.00 AUD",
+      "Contribution to profit change: -700.00 AUD",
+      "underlying business cause"
+    ]
+  },
+  {
+    "name": "selected_expense",
+    "question": "Explain this expense",
+    "income": [
+      "1500.10",
+      "1000.10"
+    ],
+    "expenses": [
+      [
+        "1000.05",
+        "300.05"
+      ]
+    ],
+    "selected": true,
+    "contains": [
+      "Expense 1: 1000.05 AUD",
+      "Contribution to profit change: -700.00 AUD",
+      "not displayed above: 500.00 AUD"
+    ]
+  },
+  {
+    "name": "seven_movements",
+    "question": "Explain the whole change",
+    "income": [
+      "2000.00",
+      "1000.00"
+    ],
+    "expenses": [
+      [
+        "100.00",
+        "0.00"
+      ],
+      [
+        "200.00",
+        "0.00"
+      ],
+      [
+        "300.00",
+        "0.00"
+      ],
+      [
+        "400.00",
+        "0.00"
+      ],
+      [
+        "500.00",
+        "0.00"
+      ],
+      [
+        "600.00",
+        "0.00"
+      ]
+    ],
+    "contains": [
+      "-1100.00 AUD",
+      "not displayed above: -300.00 AUD"
+    ]
+  },
+  {
+    "name": "largest_expense_credit",
+    "question": "Which expense changed most?",
+    "income": [
+      "1000.00",
+      "1000.00"
+    ],
+    "expenses": [
+      [
+        "-100.00",
+        "50.00"
+      ],
+      [
+        "10.00",
+        "20.00"
+      ]
+    ],
+    "focus": "largest_expense",
+    "contains": [
+      "Expense 1: -100.00 AUD",
+      "Contribution to profit change: 150.00 AUD",
+      "not displayed above: 10.00 AUD"
+    ]
+  },
+  {
+    "name": "zero_baseline",
+    "question": "Was the rise caused by expansion?",
+    "income": [
+      "100.00",
+      "0.00"
+    ],
+    "expenses": [
+      [
+        "10.00",
+        "0.00"
+      ]
+    ],
+    "contains": [
+      "90.00 AUD",
+      "cannot establish why"
+    ]
+  },
+  {
+    "name": "no_movements",
+    "question": "Why was profit unchanged?",
+    "income": [
+      "100.00",
+      "100.00"
+    ],
+    "expenses": [
+      [
+        "10.00",
+        "10.00"
+      ]
+    ],
+    "contains": [
+      "change 0.00 AUD",
+      "cannot establish why"
+    ]
+  },
+  {
+    "name": "positions_are_not_profit",
+    "report_type": "balance_sheet",
+    "question": "Did rising assets create profit?",
+    "assets": [
+      "1200.00",
+      "1000.00"
+    ],
+    "liabilities": [
+      "400.00",
+      "300.00"
+    ],
+    "equity": [
+      "800.00",
+      "700.00"
+    ],
+    "contains": [
+      "as at 2026-02-28",
+      "1200.00 AUD",
+      "change 200.00 AUD",
+      "Position changes are not profit contributions or cash flows",
+      "cannot establish why"
+    ]
+  }
+]

@@ -49,3 +49,6 @@ def current_date_instruction() -> str:
         f"Today's date is {date.today().isoformat()}. "
         "Interpret relative dates such as today, tomorrow, and next week from this date."
     )
+
+# Company reports are a separate context-bound workflow.
+SYSTEM_PROMPT += "\nFor company profit, revenue, assets or liabilities use compare_profit_and_loss or compare_balance_sheets directly. Their navigation action asks the person to choose dates in Performance and use Explain this change. Never claim invoice totals are company revenue or profit. Report figures require that explicit context-bound workflow."

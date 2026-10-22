@@ -84,7 +84,7 @@ async def test_invoices_agent_has_read_tools_only() -> None:
 
 @pytest.mark.asyncio
 async def test_orchestrator_tools_are_delegate_and_propose() -> None:
-    """The parent can delegate and propose, and it cannot call the read tools."""
+    """The parent delegates invoice reads and directly offers separate report handoffs."""
     seen: dict[str, set[str]] = {}
 
     def respond(_messages, info):  # type: ignore[no-untyped-def]
@@ -94,7 +94,7 @@ async def test_orchestrator_tools_are_delegate_and_propose() -> None:
 
     agent = build_chat_agent(FunctionModel(respond), build_mcp_server())
     await agent.run("How much is unpaid?")
-    assert seen["tools"] == {"delegate_task", "propose_action"}
+    assert seen["tools"] == {"delegate_task", "propose_action", "compare_profit_and_loss", "compare_balance_sheets"}
 
 
 @pytest.mark.asyncio

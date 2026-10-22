@@ -19,6 +19,7 @@ from pydantic_ai_harness import GuardrailResult, ToolGuardrail
 from pydantic_ai_harness.guardrails import ToolCallInfo, ToolResultInfo
 from pydantic_ai_harness.guardrails.detectors import redact_secrets
 
+from app.chat.report_history import without_report_figures
 from app.chat.guardrails.pii import PiiVault, current_vault, map_strings, rewrite_run_input
 
 _DELEGATE = "delegate_task"
@@ -29,7 +30,7 @@ def redact_text(value: str) -> str:
     vault = current_vault.get()
     if vault is None:
         vault = PiiVault()
-    return _without_secrets(vault.protect_text(value))
+    return _without_secrets(vault.protect_text(without_report_figures(value)))
 
 
 def redact_for_trace(value: str, vault: PiiVault | None = None) -> str:

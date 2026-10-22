@@ -9,3 +9,5 @@ Python files here use the module docstring in `backend/AGENTS.md`. Every functio
 - `contacts/` — contact reads
 - `invoices/` — invoice reads and totals
 - `actions/` — store a pending write for a person to confirm
+
+- `reports/` — one registrar per report tool, plus protected evidence/value-free handoff schemas; no raw report or monetary payloads to unconstrained chat.

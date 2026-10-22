@@ -6,6 +6,10 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 
 ## Files
 
+- `test_reports.py` — report authentication, permission/rollout states, exact source rows, unsupported layouts/currencies/timezones, decoded-byte and row caps, cancellation, and default period resolution.
+- `test_report_comparisons.py` — authenticated P&L comparison, ID alignment/renames/credits, top-five remainder, source reconciliation and high-precision cancellation, calendar/custom periods, invalid-range and empty-source semantics.
+- `test_balance_sheets.py` — typed as-of reads, nested/flat standard sections, negative assets, global/local totals and identity validation, missing/new/reclassified accounts, empty data, authentication/flagging and date presets.
+
 - `test_invoice_edits.py` also covers id-free MCP proposals, deterministic original-value matching, ambiguous/stale selectors, explicit removals/additions, and confirmation against the Xero service. `test_guardrails.py` verifies private ids are removed only from provider-history copies.
 
 - `test_write_safety.py` — concurrent claims, denial races, cancellation, deadlines, restart recovery, editor receipt reuse, and Xero retry/error behavior
@@ -42,3 +46,6 @@ Artifacts under `evals/artifacts/` are local and git-ignored. Retain only allowl
 - `test_observability.py` also verifies actual SDK finished-span sanitization. Tests clear tracing credentials to prevent remote exports.
 
 - test_financial_completeness.py covers currency grouping, period alignment, empty/missing currency, reversed dates, cap/lookahead boundaries, upstream filtering, malformed pages, contact truncation, typed HTTP/MCP schemas, and deterministic answer checks. No providers or live Xero are used.
+
+- `test_report_chat.py` — signed identity/refetch/source evidence, tenant reconnect, report-only FunctionModel/MCP output, PII/injection/provider/guard fallback, request/tool/token/character/deadline/rate/result limits and ordinary-history isolation. No live providers/Xero.
+- `test_report_evals.py` — report golden CI and separate opt-in judge guards, including exact seven-account displayed-contributor reconciliation.

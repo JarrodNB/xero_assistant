@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     session_https_only: bool = False
     action_execution_timeout_seconds: float = Field(default=120, gt=0, le=240)
+    performance_reports_enabled: bool = False
+    report_timeout_seconds: float = Field(default=30, gt=0, le=60)
+    report_result_byte_limit: int = Field(default=2097152, ge=65536, le=4194304)
+    report_reads_per_minute: int = Field(default=12, ge=1, le=60)
+    report_narration_enabled: bool = False
+    report_model: str = "openai:gpt-4.1-mini-2025-04-14"
+    report_jev_model: str = "jev-1.13.0"
+    report_model_character_limit: int = Field(default=12000, ge=1000, le=12000)
 
 
 @lru_cache

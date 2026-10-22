@@ -23,6 +23,9 @@ from app.db.schema import create_engine_for
 from app.errors import ApiError
 from app.invoices.routes import router as invoices_router
 from app.invoices.xero_service import XeroInvoiceService
+from app.reports.routes import router as reports_router
+from app.reports.context import ReportContexts
+from app.reports.service import ReportService
 from app.mcp_server.server import build_mcp_server
 from app.observability import configure_observability
 from app.runtime import AppServices
@@ -76,9 +79,11 @@ def create_app(
     app.state.settings = resolved
     app.state.xero = xero
     app.state.xero_connections = connections
-    app.state.services = AppServices(invoices=gateway, actions=repository)  # type: ignore[arg-type]
+    app.state.services = AppServices(invoices=gateway, actions=repository, reports=ReportService(xero, resolved.report_timeout_seconds, resolved.report_reads_per_minute))  # type: ignore[arg-type]
+    app.state.report_contexts = ReportContexts(resolved.session_secret, connections, result_byte_limit=resolved.report_result_byte_limit)
     app.state.agent = chat_agent
     app.state.ai_model = ai_model
+    app.state.report_model = None
     app.state.mcp_server = mcp_server
     app.add_middleware(
         SessionMiddleware,
@@ -93,6 +98,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(xero_router)
     app.include_router(invoices_router)
+    app.include_router(reports_router)
     app.include_router(actions_router)
     app.include_router(chat_router)
     return app

@@ -25,8 +25,8 @@ def register_compare_invoice_totals(server: FastMCP) -> None:
     ) -> PeriodComparisonToolPayload | ToolErrorPayload:
         """Compare recognised invoice totals for two date ranges.
 
-        When to use: the person asks whether revenue is up or down between two periods.
-        When not to use: the person wants the current unpaid balance. Use summarize_invoices instead.
+        When to use: the person asks whether recognised invoice sales totals changed between two periods.
+        When not to use: company revenue/profit or balance-sheet reporting; use compare_profit_and_loss or compare_balance_sheets. For unpaid balances use summarize_invoices.
         Parameters: four YYYY-MM-DD dates. Totals include authorised and paid invoices, and exclude drafts and voided invoices.
         Example: compare_invoice_totals(period_a_start="2026-01-01", period_a_end="2026-01-31", period_b_start="2026-02-01", period_b_end="2026-02-28").
         Result schema v2: currencies aligns native currencies in code order, with zero for a missing period; empty means no recognised invoices. Never sum currencies. Incomplete reads return an error; narrow periods.

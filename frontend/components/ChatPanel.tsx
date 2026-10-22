@@ -9,6 +9,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { ReportText, ReportHandoff } from "./ReportChat";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../lib/api";
 import { actionNarration } from "../lib/actionNarration";
@@ -438,6 +439,19 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
     }),
   });
   const [draft, setDraft] = useState("");
+  const [reportContext, setReportContext] = useState<string | null>(null);
+  useEffect(() => {
+    const stored = window.sessionStorage.getItem("ledger-report-draft");
+    window.sessionStorage.removeItem("ledger-report-draft");
+    if (!stored) return;
+    try {
+      const value = JSON.parse(stored);
+      if (typeof value.token === "string" && value.token.length <= 2048 && typeof value.draft === "string" && value.draft.length <= 4000) {
+        setDraft(value.draft);
+        setReportContext(value.token);
+      }
+    } catch { /* Invalid local drafts are discarded; no message is sent. */ }
+  }, []);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, Record<string, string>>>({});
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
@@ -511,7 +525,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
     setStreamError("");
     setDraft("");
     try {
-      await sendMessage({ text });
+      await sendMessage({ text }, reportContext ? { body: { report_context: reportContext } } : undefined);
     } catch (caught) {
       setStreamError(chatFailureMessage(caught));
     } finally {
@@ -700,7 +714,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
             <div className="message-group" key={message.id}>
               {texts.map((part, index) => (
                 <p className={`bubble ${message.role}`} key={`${message.id}-text-${index}`}>
-                  {message.role === "assistant" ? (
+                  {message.role === "assistant" && part.text?.includes("[View source rows (refreshes report)](/performance?context=") ? <ReportText text={part.text} /> : message.role === "assistant" ? (
                     <PacedText
                       active={newAssistantReply && busy && !error && !streamError}
                       messageId={`${message.id}-text-${index}`}
@@ -712,6 +726,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
                   )}
                 </p>
               ))}
+              {(message.parts ?? []).map((part, index) => <ReportHandoff key={`report-${index}`} output={part.output} />)}
               {proposals.map((proposal) => renderProposal(proposal, locked))}
               {(grouped.byMessageId[message.id] ?? []).map((proposal) => renderProposal(proposal, locked))}
             </div>
@@ -730,6 +745,7 @@ function ChatSession({ conversation, transcript, historyActions, onActivity }: C
           onActivity();
         }}>Stop reply</button>
       ) : null}
+      {reportContext ? <p className="muted">Report question: evidence will be refreshed when you send. Reports explain arithmetic; business causes may remain unknown. <button className="secondary" type="button" disabled={busy} onClick={() => setReportContext(null)}>Leave report context</button></p> : null}
       <form className="chat-form" onSubmit={(event) => void onSubmit(event)}>
         <input
           value={draft}

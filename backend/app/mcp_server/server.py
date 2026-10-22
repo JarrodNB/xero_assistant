@@ -1,6 +1,7 @@
 """Purpose: Build the in-process MCP server from one module per domain tool.
 
 Public API:
+- REPORT_TOOL_NAMES
 - READ_TOOL_NAMES
 - MCP_TOOL_NAMES
 - build_mcp_server
@@ -17,6 +18,10 @@ from app.mcp_server.tools import (
     register_summarize_invoices,
 )
 
+from app.mcp_server.tools.reports import register_report_tools
+
+REPORT_TOOL_NAMES = frozenset({"compare_profit_and_loss", "compare_balance_sheets"})
+
 READ_TOOL_NAMES = frozenset(
     {
         "find_contacts",
@@ -26,7 +31,7 @@ READ_TOOL_NAMES = frozenset(
         "compare_invoice_totals",
     }
 )
-MCP_TOOL_NAMES = READ_TOOL_NAMES | {"propose_action"}
+MCP_TOOL_NAMES = READ_TOOL_NAMES | REPORT_TOOL_NAMES | {"propose_action"}
 
 
 def build_mcp_server() -> FastMCP:
@@ -38,4 +43,5 @@ def build_mcp_server() -> FastMCP:
     register_summarize_invoices(server)
     register_compare_invoice_totals(server)
     register_propose_action(server)
+    register_report_tools(server)
     return server

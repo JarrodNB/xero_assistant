@@ -30,3 +30,13 @@ Confirmation follow-ups use bounded recorded-status narration without receipt or
 Summary folding is separately bounded, defaults to one block per turn, and retains the last saved summary/coverage on a failed block. Always bound the recent stored tail, including when folding is disabled. Warn the model when earlier context is unavailable. Regression coverage lives in `tests/test_ai_execution.py`; live model evaluations remain opt-in.
 
 Financial replies must preserve native currency codes and separate amounts. Partial reads cannot prove totals or absence; explain the limitation and request narrower filters. Empty groups imply no matching invoices, never a default currency. Prompt hashes version these instructions automatically.
+
+## Report explanations
+
+- `report_routes.py` — explicit top-level report_context branch, private typed selection, protected label screening, budgets and controlled SSE rendering. Ordinary invoice streaming is unchanged.
+- `report_agent.py` — report-only MCP tools and strict offered-evidence/focus output validation, with no write/proposal/invoice tools.
+- `report_prompt.py` — separately versioned performance-facts-v1 template; no injected values in the source/hash.
+- `report_facts.py` — request-local full trusted comparison, bounded protected keys/labels/directions, exact application rendering, displayed-account remainder and cause-unknown/source/time limits.
+- `report_history.py` — value-free persistence notice and removal of application-rendered report envelopes before ordinary model/summary work.
+
+Do not send report amounts or raw trees to a free-prose agent. Model output remains private until typed validation, and only application-owned figures/sentences reach report chat. Narration is separately flagged off by default. An unavailable model/guard or exhausted model budget renders deterministic fresh evidence; unavailable source/invalid identity produces recovery guidance. Reopening history requires a new Performance selection. Report mode uses only the latest protected question and current refetched evidence, never guesses from history.
