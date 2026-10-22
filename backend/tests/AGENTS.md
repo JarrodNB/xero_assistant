@@ -8,6 +8,7 @@ Run the suite with Docker Compose from Ubuntu, as described in `.cursor/rules/do
 
 - `test_reports.py` — report authentication, permission/rollout states, exact source rows, unsupported layouts/currencies/timezones, decoded-byte and row caps, cancellation, and default period resolution.
 - `test_report_comparisons.py` — authenticated P&L comparison, ID alignment/renames/credits, top-five remainder, source reconciliation and high-precision cancellation, calendar/custom periods, invalid-range and empty-source semantics.
+- `test_balance_sheets.py` — typed as-of reads, nested/flat standard sections, negative assets, global/local totals and identity validation, missing/new/reclassified accounts, empty data, authentication/flagging and date presets.
 
 - `test_invoice_edits.py` also covers id-free MCP proposals, deterministic original-value matching, ambiguous/stale selectors, explicit removals/additions, and confirmation against the Xero service. `test_guardrails.py` verifies private ids are removed only from provider-history copies.
 

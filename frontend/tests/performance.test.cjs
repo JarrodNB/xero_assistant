@@ -45,6 +45,78 @@ function fixture() {
     metrics: { income: amount, net_profit: amount }, movements: [movement], top_movements: [movement], other_movements: "0.00", warnings: [] };
 }
 
+/** Build a synthetic typed position response for the browser rendering seam. */
+function positionFixture() {
+  const position = fixture();
+  position.report_type = "balance_sheet";
+  position.current.report_type = position.comparison.report_type = "balance_sheet";
+  position.current.as_of = "2026-02-28"; position.comparison.as_of = "2026-01-31";
+  delete position.current.date_from; delete position.current.date_to;
+  delete position.comparison.date_from; delete position.comparison.date_to;
+  const amount = position.metrics.income;
+  position.metrics = { assets: amount, liabilities: amount, equity: amount, net_assets: amount };
+  const movement = { ...position.movements[0], category: "assets", section: "Bank", label: "Business Bank" };
+  delete movement.contribution;
+  position.movements = position.top_movements = [movement];
+  return position;
+}
+
+/** Keep balance-sheet position semantics distinct from income and profit. */
+test("balance-sheet tab compares as-of positions without profit columns", async () => {
+  globalThis.fetch = async (url) => new Response(JSON.stringify(String(url).includes("balance-sheet") ? positionFixture() : fixture()), { status: 200 });
+  render(React.createElement(Page));
+  await screen.findByRole("heading", { name: "Account movements" });
+  fireEvent.click(screen.getByRole("tab", { name: "Balance sheet" }));
+  await screen.findByRole("table", { name: "Balance sheet comparison" });
+  assert.ok(screen.getByLabelText("Current as-of date"));
+  assert.ok(screen.getByRole("columnheader", { name: "Position change" }));
+  assert.equal(screen.queryByRole("columnheader", { name: "Profit contribution" }), null);
+  assert.ok(screen.getAllByText(/2026-02-28/).length);
+  assert.ok(screen.getByText("Bank · assets"));
+});
+
+/** Report tabs must follow keyboard tab navigation rather than requiring a pointer. */
+test("report tabs switch and focus with arrow keys", async () => {
+  globalThis.fetch = async (url) => new Response(JSON.stringify(String(url).includes("balance-sheet") ? positionFixture() : fixture()), { status: 200 });
+  render(React.createElement(Page));
+  await screen.findByRole("heading", { name: "Account movements" });
+  const profitTab = screen.getByRole("tab", { name: "Profit and loss" });
+  profitTab.focus();
+  fireEvent.keyDown(profitTab, { key: "ArrowRight" });
+  const balanceTab = screen.getByRole("tab", { name: "Balance sheet" });
+  assert.equal(balanceTab.getAttribute("aria-selected"), "true");
+  assert.equal(document.activeElement, balanceTab);
+  fireEvent.keyDown(balanceTab, { key: "Home" });
+  assert.equal(profitTab.getAttribute("aria-selected"), "true");
+});
+
+/** Position controls submit point-in-time arguments and stale responses cannot change the active tab. */
+test("balance-sheet custom dates and late tab responses stay distinct", async () => {
+  const calls = [];
+  let finishPosition;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes("preset=custom")) return new Promise((resolve) => { finishPosition = resolve; });
+    return new Response(JSON.stringify(String(url).includes("balance-sheet") ? positionFixture() : fixture()), { status: 200 });
+  };
+  render(React.createElement(Page));
+  await screen.findByRole("heading", { name: "Account movements" });
+  fireEvent.click(screen.getByRole("tab", { name: "Balance sheet" }));
+  await screen.findByRole("table", { name: "Account positions" });
+  fireEvent.change(screen.getByLabelText("Compare with"), { target: { value: "custom" } });
+  fireEvent.change(screen.getByLabelText("Current as-of date"), { target: { value: "2025-10-31" } });
+  fireEvent.change(screen.getByLabelText("Comparison as-of date"), { target: { value: "2025-06-30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply comparison" }));
+  assert.match(calls.at(-1), /as_of=2025-10-31/);
+  assert.match(calls.at(-1), /comparison_as_of=2025-06-30/);
+  assert.doesNotMatch(calls.at(-1), /date_from|date_to/);
+  fireEvent.click(screen.getByRole("tab", { name: "Profit and loss" }));
+  await screen.findByRole("table", { name: "Account movements" });
+  await act(async () => finishPosition(new Response(JSON.stringify(positionFixture()), { status: 200 })));
+  assert.ok(screen.getByRole("table", { name: "Account movements" }));
+  assert.equal(screen.queryByRole("table", { name: "Account positions" }), null);
+});
+
 /** Display returned dates and exact source amounts in an accessible disclosure. */
 test("P&L source rows retain exact values and metadata", async () => {
   globalThis.fetch = async () => new Response(JSON.stringify(fixture()), { status: 200 });

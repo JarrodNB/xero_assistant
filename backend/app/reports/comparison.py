@@ -7,8 +7,9 @@ Public API:
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
 
-from app.reports.models import AccountMovement, AmountComparison, FinancialReport, ReportComparison, ReportRow
+from app.reports.models import AccountMovement, FinancialReport, ReportComparison, ReportRow
 from app.reports.normalization import unsupported_report
+from app.reports.amounts import compare_amounts as _amounts, fixed_amount as _fixed
 
 INCOME_SECTIONS = {"trading income", "income", "revenue", "other income", "non-operating income"}
 EXPENSE_SECTIONS = {"cost of sales", "less cost of sales", "direct costs", "operating expenses", "expenses",
@@ -127,17 +128,3 @@ def _collect_accounts(row: ReportRow, inherited: str | None, accounts: dict[str,
     if any(abs(Decimal(child.amount) - total) > tolerance for child in subtotals):
         raise unsupported_report()
     return total
-
-
-def _amounts(current: Decimal, previous: Decimal, precision: int) -> AmountComparison:
-    """Use exact decimal amounts and omit misleading nonpositive-baseline percentages."""
-    change = current - previous
-    return AmountComparison(current=_fixed(current, precision), comparison=_fixed(previous, precision), change=_fixed(change, precision),
-        percentage_change=format((change / previous * 100).quantize(Decimal("0.01")), "f") if previous > 0 else None,
-        percentage_note=None if previous > 0 else "Percentage change is unavailable because the comparison amount is zero or negative.")
-
-
-def _fixed(value: Decimal, precision: int) -> str:
-    """Retain all reported precision while padding to the verified currency minimum."""
-    places = max(precision, -value.as_tuple().exponent)
-    return format(value, f".{places}f")

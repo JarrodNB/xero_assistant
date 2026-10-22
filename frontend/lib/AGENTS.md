@@ -8,7 +8,7 @@ Shared browser and server helpers live here. Pages import these modules instead 
 
 ## Files
 
-- `reports.ts` — typed accounting reports with decimal-string amounts and public source-row keys
+- `reports.ts` — distinct P&L range and balance-sheet as-of reports, decimal-string amounts and public source-row keys; position changes have no profit-contribution field
 
 - `actionNarration.ts` — bounded confirmation/denial outcome facts, excluding ids, line lists, references, and error diagnostics. Keep narration within the minimum supported 256-character chat prompt budget.
 

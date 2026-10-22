@@ -6,6 +6,12 @@ Public API:
 - AmountComparison
 - AccountMovement
 - ReportComparison
+- BalanceSheetReport
+- PositionMovement
+- BalanceSheetComparison
+- BalanceSheetQuery
+- ProfitAndLossQuery
+- ProfitComparisonQuery
 """
 
 from datetime import date, datetime
@@ -24,6 +30,22 @@ class ReportRow(BaseModel):
     amount: str | None = None
     children: list["ReportRow"] = Field(default_factory=list)
     account_id: str | None = Field(default=None, exclude=True)
+
+
+class ProfitAndLossQuery(BaseModel):
+    """Only explicit period-range fields are valid for a P&L report."""
+
+    model_config = ConfigDict(extra="forbid")
+    date_from: date | None = None
+    date_to: date | None = None
+
+
+class ProfitComparisonQuery(ProfitAndLossQuery):
+    """Typed current and comparative P&L ranges with deliberate date presets."""
+
+    comparison_from: date | None = None
+    comparison_to: date | None = None
+    preset: Literal["previous_period", "previous_year", "custom"] = "previous_period"
 
 
 class FinancialReport(BaseModel):
@@ -80,4 +102,58 @@ class ReportComparison(BaseModel):
     movements: list[AccountMovement] = Field(default_factory=list)
     top_movements: list[AccountMovement] = Field(default_factory=list)
     other_movements: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class BalanceSheetReport(BaseModel):
+    """A validated accrual position at one date, never a date-range flow."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1"] = "1"
+    report_type: Literal["balance_sheet"] = "balance_sheet"
+    status: Literal["ready", "empty"]
+    complete: Literal[True] = True
+    as_of: date
+    basis: Literal["accrual"] = "accrual"
+    currency: str
+    currency_decimal_places: int
+    timezone: str
+    retrieved_at: datetime
+    rows: list[ReportRow]
+
+
+class BalanceSheetQuery(BaseModel):
+    """Only as-of inputs are valid for the position report interface."""
+
+    model_config = ConfigDict(extra="forbid")
+    as_of: date | None = None
+    comparison_as_of: date | None = None
+    preset: Literal["previous_month", "previous_year", "custom"] = "previous_month"
+
+
+class PositionMovement(AmountComparison):
+    """An account position change within assets, liabilities or equity."""
+
+    key: str
+    label: str
+    previous_label: str | None = None
+    category: Literal["assets", "liabilities", "equity"]
+    section: str
+    current_source: str | None
+    comparison_source: str | None
+    account_id: str = Field(exclude=True)
+
+
+class BalanceSheetComparison(BaseModel):
+    """Two validated positions with category-preserving account deltas."""
+
+    schema_version: Literal["1"] = "1"
+    report_type: Literal["balance_sheet"] = "balance_sheet"
+    status: Literal["ready", "empty"]
+    complete: Literal[True] = True
+    current: BalanceSheetReport
+    comparison: BalanceSheetReport
+    metrics: dict[str, AmountComparison] = Field(default_factory=dict)
+    movements: list[PositionMovement] = Field(default_factory=list)
+    top_movements: list[PositionMovement] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

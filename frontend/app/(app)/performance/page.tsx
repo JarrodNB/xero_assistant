@@ -5,10 +5,11 @@
  */
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, apiRequest } from "../../../lib/api";
 import { AmountComparison, ReportComparison } from "../../../lib/reports";
 import { EvidenceLink, ReportSources } from "./ReportSources";
+import { BalanceSheetExplorer } from "./BalanceSheetExplorer";
 
 type Preset = "previous_period" | "previous_year" | "custom";
 type Dates = { from: string; to: string; comparisonFrom: string; comparisonTo: string };
@@ -22,7 +23,7 @@ function Change({ amount, currency }: { amount: AmountComparison; currency: stri
 }
 
 /** Inspect comparative financial figures and their source rows without model or write calls. */
-export default function PerformancePage() {
+function ProfitAndLossExplorer() {
   const [report, setReport] = useState<ReportComparison | null>(null);
   const [dates, setDates] = useState<Dates>(EMPTY_DATES);
   const [preset, setPreset] = useState<Preset>("previous_period");
@@ -77,11 +78,10 @@ export default function PerformancePage() {
   }
 
   const currency = report?.current.currency || "";
-  return <section className="performance-page">
-    <div className="page-header"><h1>Performance</h1>
+  return <section aria-labelledby="profit-loss-heading">
+    <div className="page-header"><h2 id="profit-loss-heading">Profit and loss</h2>
       <button type="button" className="secondary" disabled={loading} onClick={() => setSelection((current) => ({ ...current, revision: current.revision + 1 }))}>Refresh report</button>
     </div>
-    <h2>Profit and loss</h2>
     <p className="muted">Compare income, costs, and profit. Changes describe reported amounts; their business causes require further evidence.</p>
     <form className="report-filters" onSubmit={applyDates}>
       <label>Current period start<input type="date" required value={dates.from} onChange={(event) => setDate("from", event.target.value)} /></label>
@@ -139,5 +139,27 @@ export default function PerformancePage() {
       </>}
       <ReportSources current={report.current} comparison={report.comparison} />
     </> : null}
+  </section>;
+}
+
+/** Switch between activity over ranges and positions at dates without mixing their state. */
+export default function PerformancePage() {
+  const [tab, setTab] = useState<"profit_and_loss" | "balance_sheet">("profit_and_loss");
+  /** Apply roving focus and standard arrow/Home/End navigation to the native tab buttons. */
+  function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? "profit_and_loss" : event.key === "End" ? "balance_sheet" : tab === "profit_and_loss" ? "balance_sheet" : "profit_and_loss";
+    setTab(next);
+    document.getElementById(next === "profit_and_loss" ? "profit-loss-tab" : "balance-sheet-tab")?.focus();
+  }
+  return <section className="performance-page"><h1>Performance</h1>
+    <div className="report-tabs" role="tablist" aria-label="Financial reports" onKeyDown={navigateTabs}>
+      <button type="button" id="profit-loss-tab" role="tab" tabIndex={tab === "profit_and_loss" ? 0 : -1} aria-selected={tab === "profit_and_loss"} aria-controls="report-panel" className={tab === "profit_and_loss" ? "primary" : "secondary"} onClick={() => setTab("profit_and_loss")}>Profit and loss</button>
+      <button type="button" id="balance-sheet-tab" role="tab" tabIndex={tab === "balance_sheet" ? 0 : -1} aria-selected={tab === "balance_sheet"} aria-controls="report-panel" className={tab === "balance_sheet" ? "primary" : "secondary"} onClick={() => setTab("balance_sheet")}>Balance sheet</button>
+    </div>
+    <div id="report-panel" role="tabpanel" aria-labelledby={tab === "profit_and_loss" ? "profit-loss-tab" : "balance-sheet-tab"}>
+      {tab === "profit_and_loss" ? <ProfitAndLossExplorer /> : <BalanceSheetExplorer />}
+    </div>
   </section>;
 }

@@ -181,7 +181,7 @@ def test_large_cancelling_accounts_retain_small_exact_movements(tmp_path):
     assert response.json()["metrics"]["net_profit"]["change"] == "0.00000100"
 
 
-@pytest.mark.parametrize("dates", ["date_from=2026-02-28&date_to=2026-02-01", "date_from=2099-01-01&date_to=2099-01-31", "date_from=2026-02-01", "preset=custom", "comparison_from=2026-01-01&comparison_to=2026-01-31"])
+@pytest.mark.parametrize("dates", ["date_from=2026-02-28&date_to=2026-02-01", "date_from=2099-01-01&date_to=2099-01-31", "date_from=2026-02-01", "preset=custom", "comparison_from=2026-01-01&comparison_to=2026-01-31", "as_of=2026-01-31", "comparison_as_of=2026-01-31"])
 def test_invalid_comparison_dates_do_not_request_reports(tmp_path, dates):
     """Invalid, partial, future or incompatible preset dates stop before financial reads."""
     client, calls = report_client(tmp_path, comparison_body)

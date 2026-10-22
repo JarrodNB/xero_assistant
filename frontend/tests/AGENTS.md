@@ -6,7 +6,7 @@ JavaScript test files use the purpose/public API header from `frontend/AGENTS.md
 
 ## Files
 
-- `performance.test.cjs` — comparison controls, exact source/metadata, source-link disclosure/focus, custom dates, preservation of pending date edits, missing-account/percentage explanations, empty/disabled/reconnect recovery and late-response isolation without browser automation
+- `performance.test.cjs` — P&L ranges versus balance-sheet as-of controls, keyboard report tabs, exact source/metadata, source-link disclosure/focus, custom dates, preservation of pending date edits, missing-account/percentage explanations, empty/disabled/reconnect recovery and late-response isolation without browser automation
 
 - `chatErrors.test.cjs` also verifies bounded narration for large results and the actual confirmation-to-chat transport path without private ids or diagnostics.
 

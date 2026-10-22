@@ -2,6 +2,7 @@
 
 Public API:
 - normalize_profit_and_loss
+- normalize_balance_sheet
 - unsupported_report
 """
 
@@ -15,6 +16,7 @@ from app.errors import ApiError
 from app.reports.models import ReportRow
 
 MAX_LEAF_ROWS = 500
+POSITION_TOTALS = {"total assets", "total liabilities", "net assets", "total equity", "total liabilities and equity"}
 
 
 def unsupported_report() -> ApiError:
@@ -49,6 +51,30 @@ def normalize_profit_and_loss(body: dict, date_from: date, date_to: date) -> lis
     state = {"leaves": 0, "rows": 0}
     seen: set[str] = set()
     return [_normalize_row(row, f"source-{index}", state, seen, 0) for index, row in enumerate(rows[1:], 1)]
+
+
+def normalize_balance_sheet(body: dict, as_of: date) -> list[ReportRow]:
+    """Require one explicitly dated position column before sharing bounded row extraction."""
+    reports = body.get("Reports")
+    if not isinstance(reports, list):
+        raise unsupported_report()
+    if not reports:
+        return []
+    if len(reports) != 1 or not isinstance(reports[0], dict) or reports[0].get("ReportType") != "BalanceSheet":
+        raise unsupported_report()
+    rows = reports[0].get("Rows")
+    if not isinstance(rows, list):
+        raise unsupported_report()
+    if not rows:
+        return []
+    if not isinstance(rows[0], dict) or rows[0].get("RowType") != "Header":
+        raise unsupported_report()
+    cells = _cells(rows[0])
+    if len(cells) != 2 or not isinstance(cells[1].get("Value"), str) or _heading_date(cells[1]["Value"]) != as_of:
+        raise unsupported_report()
+    state = {"leaves": 0, "rows": 0}
+    seen: set[str] = set()
+    return [_normalize_row(row, f"source-{index}", state, seen, 0, position=True) for index, row in enumerate(rows[1:], 1)]
 
 
 def _period_matches(value: object, start: date, end: date, titles: object = None) -> bool:
@@ -109,7 +135,7 @@ def _money(value: object) -> str:
     return format(amount, "f")
 
 
-def _normalize_row(row: object, key: str, state: dict[str, int], seen: set[str], depth: int) -> ReportRow:
+def _normalize_row(row: object, key: str, state: dict[str, int], seen: set[str], depth: int, *, position: bool = False) -> ReportRow:
     """Walk bounded sections without flattening or double-counting subtotal rows."""
     if not isinstance(row, dict) or depth > 10:
         raise unsupported_report()
@@ -123,7 +149,7 @@ def _normalize_row(row: object, key: str, state: dict[str, int], seen: set[str],
         if not isinstance(children, list):
             raise unsupported_report()
         return ReportRow(key=key, kind="section", label=label,
-                         children=[_normalize_row(child, f"{key}-{index}", state, seen, depth + 1)
+                         children=[_normalize_row(child, f"{key}-{index}", state, seen, depth + 1, position=position)
                                    for index, child in enumerate(children, 1)])
     if kind not in {"Row", "SummaryRow"}:
         raise unsupported_report()
@@ -144,7 +170,8 @@ def _normalize_row(row: object, key: str, state: dict[str, int], seen: set[str],
                     identities.add(str(UUID(item["Value"])))
                 except (ValueError, TypeError, KeyError, AttributeError) as error:
                     raise unsupported_report() from error
-    if not identities and label.casefold() in {"net profit", "net profit (loss)", "gross profit", "gross profit (loss)", "operating profit", "profit before tax", "profit after tax"}:
+    totals = POSITION_TOTALS if position else {"net profit", "net profit (loss)", "gross profit", "gross profit (loss)", "operating profit", "profit before tax", "profit after tax"}
+    if not identities and label.casefold() in totals:
         return ReportRow(key=key, kind="summary", label=label, amount=amount)
     if len(identities) != 1:
         raise unsupported_report()

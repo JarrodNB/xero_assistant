@@ -6,6 +6,9 @@
  * - AmountComparison
  * - AccountMovement
  * - ReportComparison
+ * - BalanceSheetReport
+ * - PositionMovement
+ * - BalanceSheetComparison
  */
 
 export type ReportRow = {
@@ -61,4 +64,22 @@ export type ReportComparison = {
   top_movements: AccountMovement[];
   other_movements: string | null;
   warnings: string[];
+};
+
+export type BalanceSheetReport = Omit<FinancialReport, "report_type" | "date_from" | "date_to"> & {
+  report_type: "balance_sheet";
+  as_of: string;
+};
+
+export type PositionMovement = Omit<AccountMovement, "category" | "contribution"> & {
+  category: "assets" | "liabilities" | "equity";
+  section: string;
+};
+
+export type BalanceSheetComparison = Omit<ReportComparison, "report_type" | "current" | "comparison" | "movements" | "top_movements" | "other_movements"> & {
+  report_type: "balance_sheet";
+  current: BalanceSheetReport;
+  comparison: BalanceSheetReport;
+  movements: PositionMovement[];
+  top_movements: PositionMovement[];
 };

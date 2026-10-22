@@ -1063,3 +1063,9 @@ a.primary {
     font-size: 28px;
   }
 }
+.report-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}

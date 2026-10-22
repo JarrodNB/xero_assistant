@@ -5,7 +5,7 @@
  * - EvidenceLink
  */
 
-import { FinancialReport, ReportRow } from "../../../lib/reports";
+import { BalanceSheetReport, FinancialReport, ReportRow } from "../../../lib/reports";
 
 /** Reveal every closed source ancestor and move keyboard focus to the referenced row. */
 function revealSource(key: string) {
@@ -48,12 +48,12 @@ function SourceRows({ rows, currency }: { rows: ReportRow[]; currency: string })
 }
 
 /** Expose each original report independently of the aligned comparison table. */
-export function ReportSources({ current, comparison }: { current: FinancialReport; comparison: FinancialReport }) {
+export function ReportSources({ current, comparison }: { current: FinancialReport | BalanceSheetReport; comparison: FinancialReport | BalanceSheetReport }) {
   return <section className="report-sources" aria-label="Report source evidence">
     <h2>Source reports</h2>
     {[{ report: current, label: "Current source report" }, { report: comparison, label: "Comparison source report" }].map(({ report, label }) =>
       <details className="panel report-source" key={label}>
-        <summary>{label}: {report.date_from} to {report.date_to}</summary>
+        <summary>{label}: {report.report_type === "balance_sheet" ? `As at ${report.as_of}` : `${report.date_from} to ${report.date_to}`}</summary>
         {report.status === "empty" ? <p>No report data returned.</p> : <SourceRows rows={report.rows} currency={report.currency} />}
       </details>)}
   </section>;

@@ -11,9 +11,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Literal
 
 from app.errors import ApiError
-from app.reports.models import FinancialReport, ReportComparison
+from app.reports.models import BalanceSheetComparison, BalanceSheetReport, FinancialReport, ReportComparison
+from app.reports.balance_sheet import compare_balance_sheets, resolve_position_dates
 from app.reports.comparison import compare_profit_and_loss
-from app.reports.normalization import normalize_profit_and_loss, unsupported_report
+from app.reports.normalization import normalize_balance_sheet, normalize_profit_and_loss, unsupported_report
 from app.reports.periods import resolve_profit_periods
 from app.xero.client import XeroApiError, XeroClient
 
@@ -134,3 +135,35 @@ class ReportService:
         return FinancialReport(status="ready" if rows else "empty", date_from=start, date_to=end,
                                currency=currency, currency_decimal_places=CURRENCY_DECIMAL_PLACES[currency],
                                timezone=zone, retrieved_at=datetime.now(timezone.utc), rows=rows)
+
+    async def compare_balance_sheets(self, as_of: date | None = None, comparison_as_of: date | None = None,
+                                     preset: Literal["previous_month", "previous_year", "custom"] = "previous_month") -> BalanceSheetComparison:
+        """Read two explicitly dated positions under the existing bounded operation budget."""
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                currency, zone = await self._organisation()
+                dates = resolve_position_dates(datetime.now(ZoneInfo(zone)).date(), as_of, comparison_as_of, preset)
+                current = await self._position_report(dates[0], currency, zone)
+                previous = await self._position_report(dates[1], currency, zone)
+                return compare_balance_sheets(current, previous)
+        except TimeoutError as error:
+            raise ApiError(504, "Report request timed out", "Xero did not return both complete reports within the operation deadline.", True,
+                           "Try again later. No partial comparison was used.") from error
+        except XeroApiError as error:
+            if error.status_code in {401, 403, 409}:
+                raise ApiError(403, "Report access required", "The Xero connection or user does not have report access.", False,
+                               "Reconnect Xero and grant report permissions using an account allowed to view reports.") from error
+            if error.status_code == 413:
+                raise ApiError(413, "Report is too large", "Xero's response exceeds the report byte limit.", False,
+                               "Inspect the report in Xero.") from error
+            raise ApiError(503, "Report is unavailable", "Xero did not return a usable comparison.", True,
+                           "Try again later or inspect the reports in Xero. No figures were inferred.") from error
+
+    async def _position_report(self, as_of: date, currency: str, zone: str) -> BalanceSheetReport:
+        """Ask for exactly one position column and verify its returned date."""
+        body = await self._client.get_bounded("/Reports/BalanceSheet", {"date": as_of.isoformat(), "periods": 0,
+                                                                      "standardLayout": "true", "paymentsOnly": "false"})
+        rows = normalize_balance_sheet(body, as_of)
+        return BalanceSheetReport(status="ready" if rows else "empty", as_of=as_of, currency=currency,
+                                  currency_decimal_places=CURRENCY_DECIMAL_PLACES[currency], timezone=zone,
+                                  retrieved_at=datetime.now(timezone.utc), rows=rows)
