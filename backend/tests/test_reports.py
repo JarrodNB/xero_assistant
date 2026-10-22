@@ -296,3 +296,37 @@ def test_invalid_ranges_never_read_a_financial_report(tmp_path, dates) -> None:
         result = client.get(f"/reports/profit-and-loss?{dates}")
     assert result.status_code == 422
     assert all(not request.url.path.endswith("/ProfitAndLoss") for request in calls)
+
+
+@pytest.mark.parametrize(("xero_zone", "expected_zone"), [
+    ("E. Australia Standard Time", "Australia/Brisbane"),
+    ("W. Australia Standard Time", "Australia/Perth"),
+    ("Cen. Australia Standard Time", "Australia/Adelaide"),
+])
+def test_dotted_windows_timezone_names_are_supported(tmp_path, xero_zone, expected_zone) -> None:
+    """Documented dotted Windows names resolve after the same whitespace normalization."""
+    client, calls = report_client(tmp_path, organisation={"BaseCurrency": "AUD", "Timezone": xero_zone})
+    with client:
+        response = client.get("/reports/profit-and-loss?date_from=2026-01-01&date_to=2026-01-31")
+    assert response.status_code == 200, response.text
+    assert response.json()["timezone"] == expected_zone
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("invalid_source", ["net_profit", "subtotal", "financial_section"])
+def test_single_profit_and_loss_rejects_unreconciled_sources(tmp_path, invalid_source) -> None:
+    """A complete standalone report must satisfy the comparison's financial invariants."""
+    body = report_body()
+    rows = body["Reports"][0]["Rows"]
+    if invalid_source == "net_profit":
+        rows[-1]["Rows"][0]["Cells"][1]["Value"] = "999999.00"
+    elif invalid_source == "subtotal":
+        rows[1]["Rows"][-1]["Cells"][1]["Value"] = "999999.00"
+    else:
+        rows[1]["Title"] = "Unsupported financial section"
+    client, _ = report_client(tmp_path, body)
+    with client:
+        response = client.get("/reports/profit-and-loss?date_from=2026-01-01&date_to=2026-01-31")
+    assert response.status_code == 422, response.text
+    assert "rows" not in response.json()
+    assert "999999.00" not in response.text

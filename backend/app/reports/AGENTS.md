@@ -9,7 +9,7 @@ All Python files use the header and function-docstring conventions in backend/AG
 - `models.py` — versioned decimal-string report and source-row contracts; account identities are excluded from serialization.
 - `normalization.py` — bounded standard English layout validation and evidence extraction.
 - `service.py` — organisation currency/timezone validation, report reads and whole-operation timeout.
-- `comparison.py` — exact account alignment, supported P&L semantics, source reconciliation, ranked contributors and remainder.
+- `comparison.py` — exact account alignment, supported P&L semantics, source reconciliation, ranked contributors and remainder; its single-source validator also gates standalone P&L responses.
 - `periods.py` — organisation-local completed-month, previous-period/year and explicit custom range resolution.
 - `balance_sheet.py` — as-of presets, supported position sections, subtotal/accounting-identity validation and category-preserving deltas.
 - `amounts.py` — shared exact monetary comparisons and meaningful percentage policy.

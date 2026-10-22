@@ -2,6 +2,7 @@
 
 Public API:
 - compare_profit_and_loss
+- validate_profit_and_loss
 """
 
 from dataclasses import dataclass
@@ -128,3 +129,12 @@ def _collect_accounts(row: ReportRow, inherited: str | None, accounts: dict[str,
     if any(abs(Decimal(child.amount) - total) > tolerance for child in subtotals):
         raise unsupported_report()
     return total
+
+
+def validate_profit_and_loss(report: FinancialReport) -> None:
+    """Reconcile a single source with the same monetary policy used for comparisons."""
+    if report.status == "empty":
+        return
+    with localcontext() as context:
+        context.prec = 50
+        _validate_report(report, Decimal(1).scaleb(-report.currency_decimal_places))

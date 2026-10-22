@@ -16,7 +16,7 @@ from typing import Literal
 from app.errors import ApiError
 from app.reports.models import BalanceSheetComparison, BalanceSheetReport, FinancialReport, ReportComparison
 from app.reports.balance_sheet import compare_balance_sheets, resolve_position_dates
-from app.reports.comparison import compare_profit_and_loss
+from app.reports.comparison import compare_profit_and_loss, validate_profit_and_loss
 from app.reports.normalization import normalize_balance_sheet, normalize_profit_and_loss, unsupported_report
 from app.reports.periods import resolve_profit_periods
 from app.xero.client import XeroApiError, XeroClient, current_read_tenant
@@ -24,9 +24,9 @@ from app.xero.client import XeroApiError, XeroClient, current_read_tenant
 # Xero returns Windows timezone names, not necessarily IANA identifiers.
 ORGANISATION_ZONES = {
     "UTC": "UTC", "GMTSTANDARDTIME": "Europe/London", "NEWZEALANDSTANDARDTIME": "Pacific/Auckland",
-    "AUSEASTERNSTANDARDTIME": "Australia/Sydney", "E. AUSTRALIASTANDARDTIME": "Australia/Brisbane",
-    "EAUSTRALIASTANDARDTIME": "Australia/Brisbane", "W. AUSTRALIASTANDARDTIME": "Australia/Perth",
-    "WAUSTRALIASTANDARDTIME": "Australia/Perth", "CEN. AUSTRALIASTANDARDTIME": "Australia/Adelaide",
+    "AUSEASTERNSTANDARDTIME": "Australia/Sydney", "E.AUSTRALIASTANDARDTIME": "Australia/Brisbane",
+    "EAUSTRALIASTANDARDTIME": "Australia/Brisbane", "W.AUSTRALIASTANDARDTIME": "Australia/Perth",
+    "WAUSTRALIASTANDARDTIME": "Australia/Perth", "CEN.AUSTRALIASTANDARDTIME": "Australia/Adelaide",
     "CENAUSTRALIASTANDARDTIME": "Australia/Adelaide", "EASTERNSTANDARDTIME": "America/New_York",
     "CENTRALSTANDARDTIME": "America/Chicago", "MOUNTAINSTANDARDTIME": "America/Denver",
     "PACIFICSTANDARDTIME": "America/Los_Angeles", "SINGAPORESTANDARDTIME": "Asia/Singapore",
@@ -84,9 +84,11 @@ class ReportService:
                 body = await self._client.get_bounded("/Reports/ProfitAndLoss", {"fromDate": date_from.isoformat(), "toDate": date_to.isoformat(),
                                                                                "standardLayout": "true", "paymentsOnly": "false"})
                 rows = normalize_profit_and_loss(body, date_from, date_to)
-                return FinancialReport(status="ready" if rows else "empty", date_from=date_from, date_to=date_to,
+                report = FinancialReport(status="ready" if rows else "empty", date_from=date_from, date_to=date_to,
                                        currency=currency, currency_decimal_places=CURRENCY_DECIMAL_PLACES[currency],
                                        timezone=zone, retrieved_at=datetime.now(timezone.utc), rows=rows)
+                validate_profit_and_loss(report)
+                return report
         except TimeoutError as error:
             raise ApiError(504, "Report request timed out", "Xero did not return a complete report within the operation deadline.",
                            True, "Try again later. No partial figures were used.") from error
